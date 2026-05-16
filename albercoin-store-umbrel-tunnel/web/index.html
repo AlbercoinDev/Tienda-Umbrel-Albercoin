@@ -345,7 +345,8 @@ AllowedIPs = ..."></textarea>
 <div class="toast-container" id="toastBox"></div>
 
 <script>
-const API = '/api';
+const BASE = window.location.pathname.replace(/\/+$/, '');
+const API = BASE + '/api';
 let wgConfig = '';
 let step = 1;
 let vpsRegistered = false;

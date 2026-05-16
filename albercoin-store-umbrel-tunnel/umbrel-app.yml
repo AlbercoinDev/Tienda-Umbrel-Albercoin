@@ -1,8 +1,8 @@
-manifestVersion: 1
+manifestVersion: 2
 id: albercoin-store-umbrel-tunnel
 name: Umbrel Tunnel
 tagline: Expón tus apps de Umbrel en clearnet via WireGuard
-icon: https://raw.githubusercontent.com/AlbercoinDev/Tienda-Umbrel-Albercoin/master/albercoin-store-umbrel-tunnel/web/icon.svg
+icon: web/icon.svg
 category: networking
 version: "1.0.0"
 description: >-

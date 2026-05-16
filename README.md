@@ -28,3 +28,15 @@ curl -sL https://github.com/AlbercoinDev/umbreltunnel/raw/main/install.sh | bash
 ```
 
 [Ver repositorio VPS →](https://github.com/AlbercoinDev/umbreltunnel)
+
+### FRP Client
+Expón servicios TCP de tu Umbrel (Bitcoin P2P, Electrs, etc.) mediante túneles FRP ligeros hacia tu VPS.
+- CRUD completo de proxies desde interfaz web
+- Sincronización automática con el VPS vía HTTPS
+- Encriptación forzada en cada túnel
+- `network_mode: host` para servicios de red
+- Configuración atómica — sin corrupción de datos
+
+**Requiere:** VPS con FRP Server instalado (`vps/install.sh`).
+
+[Ver repositorio →](https://github.com/AlbercoinDev/umbrel-frp)

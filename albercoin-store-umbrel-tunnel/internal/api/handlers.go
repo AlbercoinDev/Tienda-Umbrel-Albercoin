@@ -111,6 +111,8 @@ func (s *Server) handleWGConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go s.restoreForwarders()
+
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"status":    "connected",
 		"publicKey": s.wgMgr.GetPublicKey(),
@@ -190,6 +192,8 @@ func (s *Server) handleVPSRegister(w http.ResponseWriter, r *http.Request) {
 	s.vpsAPIKey = resp.APIKey
 	s.saveState()
 
+	go s.restoreForwarders()
+
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"status":        "registered",
 		"clientIP":      resp.ClientIP,
@@ -261,6 +265,12 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 			PublicURL: tunnel.PublicURL,
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
+
+		if err := s.startForwarder(clientIP, req.LocalPort); err != nil {
+			s.error(w, http.StatusInternalServerError, fmt.Sprintf("starting forwarder: %v", err))
+			return
+		}
+
 		s.tunnels = append(s.tunnels, entry)
 		s.saveState()
 
@@ -288,12 +298,17 @@ func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		entry := s.tunnels[idx]
+
 		if s.vpsClient != nil {
 			if err := s.vpsClient.DeleteTunnel(id); err != nil {
 				s.error(w, http.StatusBadGateway, fmt.Sprintf("VPS error: %v", err))
 				return
 			}
 		}
+
+		clientIP := s.wgMgr.GetClientIPFromConfig()
+		s.stopForwarder(clientIP, entry.LocalPort)
 
 		s.tunnels = append(s.tunnels[:idx], s.tunnels[idx+1:]...)
 		s.saveState()

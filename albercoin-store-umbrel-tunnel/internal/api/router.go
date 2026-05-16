@@ -3,10 +3,16 @@ package api
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
+	"time"
 
 	"github.com/albit/umbreltunnel-app/internal/config"
 	"github.com/albit/umbreltunnel-app/internal/vps"
@@ -14,15 +20,18 @@ import (
 )
 
 type Server struct {
-	cfg        *config.Config
-	wgMgr      *wireguard.Manager
-	vpsClient  *vps.Client
-	webFS      embed.FS
-	prefix     string
-	tunnels    []TunnelEntry
-	statePath  string
-	vpsURL     string
-	vpsAPIKey  string
+	cfg       *config.Config
+	wgMgr     *wireguard.Manager
+	vpsClient *vps.Client
+	webFS     embed.FS
+	prefix    string
+	tunnels   []TunnelEntry
+	statePath string
+	vpsURL    string
+	vpsAPIKey string
+
+	fwMu   sync.Mutex
+	fwd    map[string]*forwarder
 }
 
 type TunnelEntry struct {
@@ -40,11 +49,18 @@ type appState struct {
 	VpsKey  string        `json:"vpsApiKey"`
 }
 
+type forwarder struct {
+	listener net.Listener
+	port     int
+	done     chan struct{}
+}
+
 func NewServer(cfg *config.Config, wgMgr *wireguard.Manager) *Server {
 	s := &Server{
 		cfg:       cfg,
 		wgMgr:     wgMgr,
 		statePath: filepath.Join(cfg.DataDir, "app-state.json"),
+		fwd:       make(map[string]*forwarder),
 	}
 	s.loadState()
 	return s
@@ -86,6 +102,100 @@ func (s *Server) loadState() {
 	if s.vpsURL != "" {
 		s.vpsClient = vps.NewClient(s.vpsURL, s.vpsAPIKey)
 	}
+}
+
+func (s *Server) restoreForwarders() {
+	wgIP := s.wgMgr.GetClientIPFromConfig()
+	if wgIP == "" {
+		return
+	}
+	for _, t := range s.tunnels {
+		if err := s.startForwarder(wgIP, t.LocalPort); err != nil {
+			fmt.Fprintf(os.Stderr, "restore forwarder %d: %v\n", t.LocalPort, err)
+		}
+	}
+}
+
+func (s *Server) getTargetHost() string {
+	if addrs, err := net.LookupHost("umbrel.local"); err == nil && len(addrs) > 0 {
+		return addrs[0]
+	}
+	return "172.17.0.1"
+}
+
+func (s *Server) startForwarder(wgIP string, localPort int) error {
+	key := net.JoinHostPort(wgIP, strconv.Itoa(localPort))
+
+	s.fwMu.Lock()
+	if _, exists := s.fwd[key]; exists {
+		s.fwMu.Unlock()
+		return nil
+	}
+	s.fwMu.Unlock()
+
+	targetHost := s.getTargetHost()
+	target := net.JoinHostPort(targetHost, strconv.Itoa(localPort))
+
+	l, err := net.Listen("tcp", ":"+strconv.Itoa(localPort))
+	if err != nil {
+		return fmt.Errorf("listen :%d: %w", localPort, err)
+	}
+
+	f := &forwarder{
+		listener: l,
+		port:     localPort,
+		done:     make(chan struct{}),
+	}
+
+	s.fwMu.Lock()
+	s.fwd[key] = f
+	s.fwMu.Unlock()
+
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				select {
+				case <-f.done:
+					return
+				default:
+					continue
+				}
+			}
+			go func() {
+				defer conn.Close()
+				dst, err := net.DialTimeout("tcp", target, 10*time.Second)
+				if err != nil {
+					return
+				}
+				defer dst.Close()
+				var wg sync.WaitGroup
+				wg.Add(2)
+				go func() { ioCopy(dst, conn); wg.Done() }()
+				go func() { ioCopy(conn, dst); wg.Done() }()
+				wg.Wait()
+			}()
+		}
+	}()
+
+	return nil
+}
+
+func (s *Server) stopForwarder(wgIP string, localPort int) {
+	key := net.JoinHostPort(wgIP, strconv.Itoa(localPort))
+	s.fwMu.Lock()
+	f, ok := s.fwd[key]
+	delete(s.fwd, key)
+	s.fwMu.Unlock()
+	if ok {
+		close(f.done)
+		f.listener.Close()
+	}
+}
+
+func ioCopy(dst io.Writer, src io.Reader) {
+	buf := make([]byte, 32768)
+	io.CopyBuffer(dst, src, buf)
 }
 
 func (s *Server) Handler() http.Handler {

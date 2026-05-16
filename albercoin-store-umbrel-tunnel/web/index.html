@@ -212,6 +212,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 2rem; }
 </header>
 
 <main>
+  <div id="loadingMsg" style="text-align:center;padding:1rem;margin-bottom:1rem;background:var(--accent-soft);border-radius:var(--radius);border:1px solid var(--accent);display:none">
+    <span class="spinner" style="width:20px;height:20px;vertical-align:middle;margin-right:0.5rem"></span>
+    <span id="loadingText">Conectando con el servidor...</span>
+  </div>
+  <div id="errorBanner" style="display:none;text-align:center;padding:1.5rem;margin-bottom:1rem;background:rgba(239,68,68,0.1);border-radius:var(--radius);border:1px solid var(--danger)">
+    <p style="color:var(--danger);font-weight:600;margin-bottom:0.5rem">⚠ No se puede conectar con el servidor</p>
+    <p id="errorDetail" style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.75rem"></p>
+    <button class="btn btn-sm btn-secondary" onclick="retryInit()">Reintentar</button>
+  </div>
   <!-- Steps -->
   <div class="steps">
     <div class="step" id="st1"><div class="step-num">1</div><h3>Conectar VPS</h3><p>Registra tu Umbrel en el VPS</p></div>
@@ -381,8 +390,13 @@ function goStep(n) { step = n; renderSteps(); if(n === 2) loadConfig(); if(n ===
 // === STEP 1 ===
 
 async function init() {
+  const loading = document.getElementById('loadingMsg');
+  const error = document.getElementById('errorBanner');
+  loading.style.display = 'block';
+  error.style.display = 'none';
   try {
     const st = await apiFetch('/setup');
+    loading.style.display = 'none';
     if(st.wireguardConfigured) {
       const c = await apiFetch('/wg/config');
       wgConfig = c.config || '';
@@ -397,8 +411,18 @@ async function init() {
     renderSteps();
     if(step === 3) loadTunnels();
     if(step === 2) loadConfig();
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    loading.style.display = 'none';
+    document.getElementById('errorDetail').textContent = e.message || 'Error de conexión con el servidor';
+    error.style.display = 'block';
+    console.error(e);
+  }
   updateStatus();
+}
+
+function retryInit() {
+  document.getElementById('errorBanner').style.display = 'none';
+  init();
 }
 
 async function vpsRegister() {

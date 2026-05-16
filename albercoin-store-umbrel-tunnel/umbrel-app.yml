@@ -1,4 +1,4 @@
-manifestVersion: 2
+manifestVersion: 1
 id: albercoin-store-umbrel-tunnel
 name: Umbrel Tunnel
 tagline: Expón tus apps de Umbrel en clearnet via WireGuard
@@ -38,10 +38,4 @@ dependencies: []
 repo: https://github.com/AlbercoinDev/Tienda-Umbrel-Albercoin
 support: https://github.com/AlbercoinDev/Tienda-Umbrel-Albercoin/issues
 port: 8080
-gpu: false
-permissions:
-  - NET_ADMIN
-  - SYS_PTRACE
-  - DAC_OVERRIDE
-  - NET_RAW
 submitter: AlbercoinDev

@@ -15,9 +15,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	vpsConnected := s.vpsClient != nil && s.vpsClient.Check() == nil
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"wgConnected":  s.wgMgr.IsUp(),
-		"vpsConnected": s.vpsClient != nil,
+		"vpsConnected": vpsConnected,
 		"tunnelCount":  len(s.tunnels),
 		"hasConfig":    s.wgMgr.GetConfigContent() != "",
 	})
@@ -29,10 +30,16 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wgConfig := s.wgMgr.GetConfigContent()
+	vpsRegistered := s.vpsClient != nil
+	vpsConnected := false
+	if vpsRegistered {
+		vpsConnected = s.vpsClient.Check() == nil
+	}
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"wireguardConfigured": wgConfig != "",
 		"wireguardConnected":  s.wgMgr.IsUp(),
-		"vpsRegistered":       s.vpsClient != nil,
+		"vpsRegistered":       vpsRegistered,
+		"vpsConnected":        vpsConnected,
 	})
 }
 
@@ -179,6 +186,9 @@ func (s *Server) handleVPSRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.vpsClient = client
+	s.vpsURL = req.ServerURL
+	s.vpsAPIKey = resp.APIKey
+	s.saveState()
 
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"status":        "registered",
@@ -206,6 +216,10 @@ func (s *Server) handleVPSCheck(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
+		if s.tunnels == nil {
+			s.json(w, http.StatusOK, []TunnelEntry{})
+			return
+		}
 		s.json(w, http.StatusOK, s.tunnels)
 
 	case http.MethodPost:
@@ -248,6 +262,7 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
 		s.tunnels = append(s.tunnels, entry)
+		s.saveState()
 
 		s.json(w, http.StatusCreated, entry)
 
@@ -281,6 +296,7 @@ func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.tunnels = append(s.tunnels[:idx], s.tunnels[idx+1:]...)
+		s.saveState()
 		s.json(w, http.StatusOK, map[string]string{"status": "deleted"})
 
 	default:

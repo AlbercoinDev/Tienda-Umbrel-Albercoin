@@ -1,5 +1,5 @@
 manifestVersion: 1
-id: umbrel-tunnel
+id: albercoin-store-umbrel-tunnel
 name: Umbrel Tunnel
 tagline: Expón tus apps de Umbrel en clearnet via WireGuard
 category: networking

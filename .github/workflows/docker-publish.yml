@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "umbrel-tunnel/**"
+      - "albercoin-store-umbrel-tunnel/**"
   workflow_dispatch:
 
 jobs:
@@ -30,8 +30,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: umbrel-tunnel
+          context: albercoin-store-umbrel-tunnel
           push: true
           tags: |
-            ghcr.io/albercoindev/umbrel-tunnel:latest
-            ghcr.io/albercoindev/umbrel-tunnel:${{ github.sha }}
+            ghcr.io/albercoindev/albercoin-store-umbrel-tunnel:latest
+            ghcr.io/albercoindev/albercoin-store-umbrel-tunnel:${{ github.sha }}

@@ -16,6 +16,7 @@ type Manager struct {
 	privateKey string
 	publicKey  string
 	configPath string
+	keyPath    string
 }
 
 func NewManager(dataDir, iface string) *Manager {
@@ -23,7 +24,74 @@ func NewManager(dataDir, iface string) *Manager {
 		dataDir:    dataDir,
 		iface:      iface,
 		configPath: filepath.Join(dataDir, "wg.conf"),
+		keyPath:    filepath.Join(dataDir, "key"),
 	}
+}
+
+func (m *Manager) loadKeyFromDisk() bool {
+	data, err := os.ReadFile(m.keyPath)
+	if err != nil {
+		return false
+	}
+	priv := strings.TrimSpace(string(data))
+	if priv == "" {
+		return false
+	}
+	pub, err := pipeToWg("pubkey", priv)
+	if err != nil {
+		return false
+	}
+	m.privateKey = priv
+	m.publicKey = strings.TrimSpace(pub)
+	return true
+}
+
+func (m *Manager) loadKeyFromConfig() bool {
+	configData, err := os.ReadFile(m.configPath)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(configData), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "PrivateKey") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				priv := strings.TrimSpace(parts[1])
+				if priv == "" || priv == "<inserta-tu-clave-privada-aqui>" {
+					return false
+				}
+				pub, err := pipeToWg("pubkey", priv)
+				if err == nil {
+					m.privateKey = priv
+					m.publicKey = strings.TrimSpace(pub)
+					m.saveKeyToDisk()
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (m *Manager) generateKey() string {
+	priv, err := wgCommand("genkey")
+	if err != nil {
+		return ""
+	}
+	priv = strings.TrimSpace(priv)
+	pub, err := pipeToWg("pubkey", priv)
+	if err != nil {
+		return ""
+	}
+	m.privateKey = priv
+	m.publicKey = strings.TrimSpace(pub)
+	m.saveKeyToDisk()
+	return m.publicKey
+}
+
+func (m *Manager) saveKeyToDisk() {
+	os.MkdirAll(m.dataDir, 0700)
+	os.WriteFile(m.keyPath, []byte(m.privateKey), 0600)
 }
 
 func (m *Manager) GetPublicKey() string {
@@ -34,43 +102,21 @@ func (m *Manager) GetPublicKey() string {
 		return m.publicKey
 	}
 
-	configData, err := os.ReadFile(m.configPath)
-	if err == nil {
-		for _, line := range strings.Split(string(configData), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "PrivateKey") {
-				parts := strings.SplitN(line, "=", 2)
-				if len(parts) == 2 {
-					priv := strings.TrimSpace(parts[1])
-					m.privateKey = priv
-					pub, err := pipeToWg("pubkey", priv)
-					if err == nil {
-						m.publicKey = strings.TrimSpace(pub)
-						return m.publicKey
-					}
-				}
-			}
-		}
+	if m.loadKeyFromDisk() {
+		return m.publicKey
 	}
 
-	priv, err := wgCommand("genkey")
-	if err != nil {
-		return ""
+	if m.loadKeyFromConfig() {
+		return m.publicKey
 	}
-	priv = strings.TrimSpace(priv)
-	pub, err := pipeToWg("pubkey", priv)
-	if err != nil {
-		return ""
-	}
-	pub = strings.TrimSpace(pub)
 
-	m.privateKey = priv
-	m.publicKey = pub
-	return pub
+	return m.generateKey()
 }
 
 func (m *Manager) GetPrivateKey() string {
 	m.GetPublicKey()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.privateKey
 }
 
@@ -101,15 +147,48 @@ func (m *Manager) Disconnect() error {
 }
 
 func (m *Manager) IsUp() bool {
-	cmd := exec.Command("wg", "show", m.iface)
-	return cmd.Run() == nil
+	if err := exec.Command("wg", "show", m.iface).Run(); err == nil {
+		return true
+	}
+	iface := m.detectInterface()
+	if iface != "" {
+		return exec.Command("wg", "show", iface).Run() == nil
+	}
+	return false
+}
+
+func (m *Manager) detectInterface() string {
+	data, err := os.ReadFile(m.configPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Interface") || line == "[Interface]" {
+			continue
+		}
+	}
+	out, err := exec.Command("wg", "show", "interfaces").Output()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range strings.Fields(string(out)) {
+		if iface != "" {
+			return iface
+		}
+	}
+	return ""
 }
 
 func (m *Manager) Status() string {
 	if !m.IsUp() {
 		return "disconnected"
 	}
-	out, _ := exec.Command("wg", "show", m.iface).Output()
+	iface := m.iface
+	if exec.Command("wg", "show", iface).Run() != nil {
+		iface = m.detectInterface()
+	}
+	out, _ := exec.Command("wg", "show", iface).Output()
 	return string(out)
 }
 
@@ -123,6 +202,29 @@ func (m *Manager) GetConfigContent() string {
 
 func (m *Manager) GetConfigPath() string {
 	return m.configPath
+}
+
+func (m *Manager) GetClientIPFromConfig() string {
+	data, err := os.ReadFile(m.configPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Address") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				addr := strings.TrimSpace(parts[1])
+				addr = strings.Split(addr, ",")[0]
+				addr = strings.TrimSpace(addr)
+				if strings.Contains(addr, "/") {
+					return strings.Split(addr, "/")[0]
+				}
+				return addr
+			}
+		}
+	}
+	return ""
 }
 
 func wgCommand(subcmd string) (string, error) {

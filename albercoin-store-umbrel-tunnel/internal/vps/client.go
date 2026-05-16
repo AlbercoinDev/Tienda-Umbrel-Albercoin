@@ -139,6 +139,9 @@ func (c *Client) Check() error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("VPS returned status %d", resp.StatusCode)
+	}
 	return nil
 }

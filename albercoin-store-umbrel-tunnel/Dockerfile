@@ -6,12 +6,14 @@ COPY main.go .
 COPY internal/ ./internal/
 COPY web/ ./web/
 
-RUN go build -ldflags="-s -w" -o umbrel-tunnel .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o umbrel-tunnel .
 
 FROM alpine:3.19
 
 RUN apk add --no-cache \
     wireguard-tools \
+    iptables \
+    iproute2 \
     ca-certificates \
     openresolv \
     bash

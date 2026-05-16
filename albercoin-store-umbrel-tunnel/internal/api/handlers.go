@@ -97,6 +97,8 @@ func (s *Server) handleWGConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	configToApply = s.injectPrivateKey(configToApply)
+
 	if err := s.wgMgr.ApplyConfig(configToApply); err != nil {
 		s.error(w, http.StatusInternalServerError, fmt.Sprintf("wireguard: %v", err))
 		return
@@ -123,10 +125,21 @@ func (s *Server) handleWGStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"status":   status,
+		"status":    status,
 		"connected": isUp,
-		"wgOutput": output,
+		"wgOutput":  output,
 	})
+}
+
+func (s *Server) injectPrivateKey(config string) string {
+	if !strings.Contains(config, "<inserta-tu-clave-privada-aqui>") {
+		return config
+	}
+	priv := s.wgMgr.GetPrivateKey()
+	if priv == "" {
+		return config
+	}
+	return strings.Replace(config, "<inserta-tu-clave-privada-aqui>", priv, 1)
 }
 
 func (s *Server) handleVPSRegister(w http.ResponseWriter, r *http.Request) {
@@ -156,8 +169,10 @@ func (s *Server) handleVPSRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if resp.ConfigContent != "" {
-		if err := s.wgMgr.ApplyConfig(resp.ConfigContent); err != nil {
+	configContent := resp.ConfigContent
+	if configContent != "" {
+		configContent = s.injectPrivateKey(configContent)
+		if err := s.wgMgr.ApplyConfig(configContent); err != nil {
 			s.error(w, http.StatusInternalServerError, fmt.Sprintf("applying WireGuard config: %v", err))
 			return
 		}
@@ -168,7 +183,7 @@ func (s *Server) handleVPSRegister(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"status":        "registered",
 		"clientIP":      resp.ClientIP,
-		"configContent": resp.ConfigContent,
+		"configContent": configContent,
 	})
 }
 
@@ -216,7 +231,7 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		clientIP := s.extractClientIP()
+		clientIP := s.wgMgr.GetClientIPFromConfig()
 
 		tunnel, err := s.vpsClient.CreateTunnel(req.Name, req.LocalPort, clientIP)
 		if err != nil {
@@ -259,7 +274,10 @@ func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if s.vpsClient != nil {
-			s.vpsClient.DeleteTunnel(id)
+			if err := s.vpsClient.DeleteTunnel(id); err != nil {
+				s.error(w, http.StatusBadGateway, fmt.Sprintf("VPS error: %v", err))
+				return
+			}
 		}
 
 		s.tunnels = append(s.tunnels[:idx], s.tunnels[idx+1:]...)
@@ -268,22 +286,6 @@ func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.error(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
-}
-
-func (s *Server) extractClientIP() string {
-	status := s.wgMgr.Status()
-	for _, line := range strings.Split(status, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "allowed ips") || strings.Contains(line, "allowedips") {
-			parts := strings.Fields(line)
-			for _, p := range parts {
-				if strings.Contains(p, ".") && strings.Contains(p, "/") {
-					return strings.Split(p, "/")[0]
-				}
-			}
-		}
-	}
-	return ""
 }
 
 func errToString(err error) string {

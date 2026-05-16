@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/albit/umbreltunnel-app/internal/config"
 	"github.com/albit/umbreltunnel-app/internal/vps"
@@ -12,12 +14,15 @@ import (
 )
 
 type Server struct {
-	cfg       *config.Config
-	wgMgr     *wireguard.Manager
-	vpsClient *vps.Client
-	webFS     embed.FS
-	prefix    string
-	tunnels   []TunnelEntry
+	cfg        *config.Config
+	wgMgr      *wireguard.Manager
+	vpsClient  *vps.Client
+	webFS      embed.FS
+	prefix     string
+	tunnels    []TunnelEntry
+	statePath  string
+	vpsURL     string
+	vpsAPIKey  string
 }
 
 type TunnelEntry struct {
@@ -29,11 +34,20 @@ type TunnelEntry struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+type appState struct {
+	Tunnels []TunnelEntry `json:"tunnels"`
+	VpsURL  string        `json:"vpsUrl"`
+	VpsKey  string        `json:"vpsApiKey"`
+}
+
 func NewServer(cfg *config.Config, wgMgr *wireguard.Manager) *Server {
-	return &Server{
-		cfg:   cfg,
-		wgMgr: wgMgr,
+	s := &Server{
+		cfg:       cfg,
+		wgMgr:     wgMgr,
+		statePath: filepath.Join(cfg.DataDir, "app-state.json"),
 	}
+	s.loadState()
+	return s
 }
 
 func (s *Server) SetVPSClient(c *vps.Client) {
@@ -43,6 +57,35 @@ func (s *Server) SetVPSClient(c *vps.Client) {
 func (s *Server) SetWebFS(fs embed.FS, prefix string) {
 	s.webFS = fs
 	s.prefix = prefix
+}
+
+func (s *Server) saveState() {
+	st := appState{
+		Tunnels: s.tunnels,
+		VpsURL:  s.vpsURL,
+		VpsKey:  s.vpsAPIKey,
+	}
+	data, _ := json.MarshalIndent(st, "", "  ")
+	os.WriteFile(s.statePath, data, 0600)
+}
+
+func (s *Server) loadState() {
+	data, err := os.ReadFile(s.statePath)
+	if err != nil {
+		return
+	}
+	var st appState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return
+	}
+	if st.Tunnels != nil {
+		s.tunnels = st.Tunnels
+	}
+	s.vpsURL = st.VpsURL
+	s.vpsAPIKey = st.VpsKey
+	if s.vpsURL != "" {
+		s.vpsClient = vps.NewClient(s.vpsURL, s.vpsAPIKey)
+	}
 }
 
 func (s *Server) Handler() http.Handler {

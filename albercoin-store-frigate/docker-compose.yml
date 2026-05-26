@@ -38,6 +38,18 @@ services:
           log_html="No Frigate log found yet. The service may still be installing dependencies or downloading Frigate."
         fi
 
+        clearnet_host="$${DEVICE_DOMAIN_NAME:-umbrel.local}"
+        clearnet_endpoint="$${clearnet_host}:$${APP_FRIGATE_ELECTRUM_PORT:-50005}"
+        onion_file="/tor-data/app-albercoin-store-frigate-electrum/hostname"
+        onion_host="$$(cat "$${onion_file}" 2>/dev/null || true)"
+        if [ -n "$${onion_host}" ]; then
+          onion_endpoint="$${onion_host}:$${APP_FRIGATE_ELECTRUM_PORT:-50005}"
+          onion_detail="Use this endpoint from Tor-enabled Electrum clients."
+        else
+          onion_endpoint="Generating onion address..."
+          onion_detail="Tor is still creating the hidden service hostname. Refreshes automatically."
+        fi
+
         generated_at="$$(date -u "+%Y-%m-%d %H:%M:%S UTC")"
         cat > /usr/share/nginx/html/index.html <<EOF
       <!doctype html>
@@ -56,10 +68,16 @@ services:
           .card { margin-top: 22px; padding: 22px; border-radius: 18px; background: rgba(0,0,0,.22); }
           .status { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 999px; background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; font-weight: 700; }
           .dot { width: 10px; height: 10px; border-radius: 999px; background: #5cc8ff; box-shadow: 0 0 18px #5cc8ff; }
+          .connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
+          .connection { padding: 18px; border-radius: 16px; background: rgba(92,200,255,.08); border: 1px solid rgba(92,200,255,.18); }
+          .connection h2 { margin: 0 0 8px; font-size: 16px; color: #ffffff; }
+          .connection p { margin: 8px 0 0; font-size: 14px; }
+          .endpoint { display: block; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }
           dl { display: grid; grid-template-columns: 170px 1fr; gap: 10px 18px; margin: 0; color: #c6d8e8; }
           dt { color: #8fb0c8; }
           dd { margin: 0; }
           pre { overflow: auto; white-space: pre-wrap; color: #cfeeff; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 16px; max-height: 360px; font-size: 13px; line-height: 1.45; }
+          @media (max-width: 720px) { .connections { grid-template-columns: 1fr; } dl { grid-template-columns: 1fr; } }
         </style>
       </head>
       <body>
@@ -67,6 +85,18 @@ services:
           <h1>Frigate</h1>
           <div class="status"><span class="dot"></span>$${status}</div>
           <p>$${detail}</p>
+          <div class="connections">
+            <div class="connection">
+              <h2>Clearnet / LAN</h2>
+              <code class="endpoint">$${clearnet_endpoint}</code>
+              <p>Use this from wallets on your local network.</p>
+            </div>
+            <div class="connection">
+              <h2>Tor hidden service</h2>
+              <code class="endpoint">$${onion_endpoint}</code>
+              <p>$${onion_detail}</p>
+            </div>
+          </div>
           <div class="card">
             <dl>
               <dt>Electrum TCP port</dt><dd><code>$${APP_FRIGATE_ELECTRUM_PORT:-50005}</code></dd>
@@ -89,9 +119,11 @@ services:
       nginx -g "daemon off;"'
     volumes:
       - ${APP_DATA_DIR}/data/frigate:/data/frigate:ro
+      - ${TOR_DATA_DIR}:/tor-data:ro
     environment:
       APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
       APP_FRIGATE_ELECTRUM_PORT: "${APP_FRIGATE_ELECTRUM_PORT}"
+      DEVICE_DOMAIN_NAME: "${DEVICE_DOMAIN_NAME}"
     networks:
       default:
         ipv4_address: $APP_FRIGATE_WEB_IP

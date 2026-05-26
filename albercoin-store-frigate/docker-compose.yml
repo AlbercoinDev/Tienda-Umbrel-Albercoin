@@ -1,11 +1,27 @@
 version: "3.7"
 
 services:
+  app_proxy:
+    environment:
+      APP_HOST: $APP_FRIGATE_WEB_IP
+      APP_PORT: 80
+
+  web:
+    image: nginx:1.27-alpine
+    restart: on-failure
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    networks:
+      default:
+        ipv4_address: $APP_FRIGATE_WEB_IP
+
   frigate:
-    build: .
+    image: debian:bookworm-slim
     restart: always
     stop_grace_period: 2m
+    command: sh /usr/local/bin/start-frigate.sh
     volumes:
+      - ./start-frigate.sh:/usr/local/bin/start-frigate.sh:ro
       - ${APP_DATA_DIR}/data/frigate:/data/frigate
     environment:
       APP_VERSION: "${APP_VERSION}"
@@ -33,3 +49,6 @@ services:
       - ${TOR_DATA_DIR}:/data
     environment:
       HOME: "/tmp"
+    networks:
+      default:
+        ipv4_address: $APP_FRIGATE_TOR_IP

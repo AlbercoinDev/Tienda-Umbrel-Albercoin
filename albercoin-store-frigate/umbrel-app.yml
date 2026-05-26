@@ -1,9 +1,10 @@
-manifestVersion: 1.1
-id: frigate
+manifestVersion: 1
+id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
 version: "1.5.2"
 tagline: Electrum server for Silent Payments
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
 description: >
   Frigate is an Electrum server for Bitcoin Silent Payments (BIP352).
   It performs Silent Payments scanning server-side using ephemeral client keys,

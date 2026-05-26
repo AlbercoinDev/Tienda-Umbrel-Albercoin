@@ -2,9 +2,9 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.5.2-02"
+version: "1.5.2-03"
 tagline: Electrum server for Silent Payments
-icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
+icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 description: >-
   Frigate is an Electrum server for Bitcoin Silent Payments (BIP352).
   It performs Silent Payments scanning server-side using ephemeral client keys,
@@ -24,17 +24,18 @@ repo: https://github.com/sparrowwallet/frigate
 support: https://github.com/sparrowwallet/frigate/issues
 port: 2125
 gallery:
-  - https://raw.githubusercontent.com/sparrowwallet/frigate/master/frigatelogo.png
+  - https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Umbrel package revision 02 for Frigate 1.5.2.
+  Umbrel package revision 03 for Frigate 1.5.2.
 
 
-  Adds a configuration panel for Frigate settings, separates host and port for
-  clearnet and Tor connection details, and keeps the Frigate binary pinned to
-  upstream version 1.5.2.
+  Adds confirmation before saving configuration changes, automatically restarts
+  Frigate after saving, clears the Frigate log at every restart, improves
+  connection details with copy buttons, and uses a local copy of the official
+  Frigate icon.
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:

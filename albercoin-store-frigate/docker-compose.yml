@@ -22,10 +22,11 @@ services:
 
         DATA_DIR = Path("/data/frigate")
         SETTINGS_FILE = DATA_DIR / "settings.env"
+        RESTART_FILE = DATA_DIR / ".restart-requested"
         TOR_HOSTNAME_FILE = Path("/tor-data/app-albercoin-store-frigate-electrum/hostname")
 
         DEFAULTS = {
-            "START_HEIGHT": "950000",
+            "START_HEIGHT": "",
             "CACHE_SIZE": "10M",
             "COMPUTE_BACKEND": "AUTO",
             "DB_THREADS": "",
@@ -38,7 +39,7 @@ services:
         }
 
         FIELDS = [
-            ("START_HEIGHT", "Start height", "Block height where Frigate starts building its Silent Payments index. Changing this value requires deleting the DuckDB index and rebuilding from scratch. This is necessary because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core."),
+            ("START_HEIGHT", "Start height", "Optional block height where Frigate starts building its Silent Payments index. Leave empty to use Frigate's official default: 709632 on mainnet (Taproot activation), 0 on test networks. Changing this value requires deleting the DuckDB index and rebuilding from scratch because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core."),
             ("CACHE_SIZE", "Cache size", "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems."),
             ("COMPUTE_BACKEND", "Compute backend", "AUTO uses GPU if available and CPU otherwise. CPU forces CPU scanning. GPU forces GPU scanning."),
             ("DB_THREADS", "DB threads", "Optional DuckDB thread limit. Useful to reduce CPU load when computeBackend is CPU. Leave empty for Frigate default."),
@@ -117,9 +118,11 @@ services:
             .card {{ margin-top: 22px; padding: 22px; border-radius: 18px; background: rgba(0,0,0,.22); }}
             .status {{ display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 999px; background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; font-weight: 700; }}
             .dot {{ width: 10px; height: 10px; border-radius: 999px; background: #5cc8ff; box-shadow: 0 0 18px #5cc8ff; }}
-            .connections {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }}
+            .connections {{ display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 22px; }}
             .connection {{ padding: 18px; border-radius: 16px; background: rgba(92,200,255,.08); border: 1px solid rgba(92,200,255,.18); }}
             .endpoint {{ display: block; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }}
+            .copy-row {{ display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }}
+            .copy-button {{ padding: 8px 10px; border-radius: 8px; font-size: 13px; }}
             dl {{ display: grid; grid-template-columns: 170px 1fr; gap: 10px 18px; margin: 0; color: #c6d8e8; }}
             dt {{ color: #8fb0c8; }}
             dd {{ margin: 0; overflow-wrap: anywhere; }}
@@ -128,7 +131,22 @@ services:
             .help {{ color: #a9bfd1; font-size: 14px; line-height: 1.45; margin-top: 8px; }}
             .warning {{ border-color: rgba(255,190,92,.36); background: rgba(255,190,92,.1); color: #ffe0a3; }}
             @media (max-width: 760px) {{ .connections, .field {{ grid-template-columns: 1fr; }} dl {{ grid-template-columns: 1fr; }} }}
-          </style>
+        </style>
+        <script>
+          function copyValue(value, button) {{
+            function done() {{ const old = button.textContent; button.textContent = 'Copied'; setTimeout(() => button.textContent = old, 1200); }}
+            if (navigator.clipboard && window.isSecureContext) {{ navigator.clipboard.writeText(value).then(done); return; }}
+            const area = document.createElement('textarea'); area.value = value; document.body.appendChild(area); area.select(); document.execCommand('copy'); document.body.removeChild(area); done();
+          }}
+          function confirmConfigSave(form) {{
+            const oldHeight = form.dataset.currentStartHeight || '';
+            const newHeight = (form.elements['START_HEIGHT'].value || '').trim();
+            if (oldHeight !== newHeight) {{
+              return confirm('Changing Start height changes the index range. Frigate will delete db/ and rebuild the index from scratch, then restart automatically. Continue?');
+            }}
+            return confirm('Save configuration and restart Frigate automatically now?');
+          }}
+        </script>
         </head>
         <body><main>{body}</main></body></html>'''
 
@@ -141,7 +159,8 @@ services:
             clearnet_host = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local")
             onion_host = TOR_HOSTNAME_FILE.read_text().strip() if TOR_HOSTNAME_FILE.exists() else "Generating onion address..."
             onion_detail = "Use this host from Tor-enabled Electrum clients." if onion_host.endswith(".onion") else "Tor is still creating the hidden service hostname."
-            msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
+            restart_msg = '<div class="card warning"><p>Restart requested. Frigate will reload configuration shortly.</p></div>' if RESTART_FILE.exists() else ""
+            msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
             return f'''
             <h1>Frigate</h1>
             <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
@@ -149,10 +168,10 @@ services:
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
             <div class="connections">
-              <div class="connection"><h2>Clearnet / LAN</h2><dl><dt>Host</dt><dd><code class="endpoint">{escape(clearnet_host)}</code></dd><dt>Port</dt><dd><code>{escape(port)}</code></dd></dl><p>Use this from wallets on your local network.</p></div>
-              <div class="connection"><h2>Tor hidden service</h2><dl><dt>Host</dt><dd><code class="endpoint">{escape(onion_host)}</code></dd><dt>Port</dt><dd><code>{escape(port)}</code></dd></dl><p>{escape(onion_detail)}</p></div>
+              <div class="connection"><h2>Clearnet / LAN</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>Use this from wallets on your local network.</p></div>
+              <div class="connection"><h2>Tor hidden service</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
-            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Start block</dt><dd><code>{escape(settings["START_HEIGHT"])}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
+            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Start block</dt><dd><code>{escape(settings["START_HEIGHT"] or "Frigate default")}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
             <div class="card"><p>Latest Frigate log lines:</p><pre>{escape(latest_lines(lpath))}</pre></div>
             '''
 
@@ -165,15 +184,16 @@ services:
                 if key == "COMPUTE_BACKEND":
                     control = '<select name="COMPUTE_BACKEND">' + ''.join(f'<option value="{v}" {"selected" if value == v else ""}>{v}</option>' for v in ["AUTO", "GPU", "CPU"]) + '</select>'
                 else:
-                    control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(DEFAULTS[key])}">'
-                warning = '<p class="help"><strong>Important:</strong> changing start height deletes the local db/ index on next Frigate start so it can be rebuilt correctly from the new height.</p>' if key == "START_HEIGHT" else ""
+                    placeholder = 'Frigate default' if key == 'START_HEIGHT' else DEFAULTS[key]
+                    control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(placeholder)}">'
+                warning = '<p class="help"><strong>Important:</strong> changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.</p>' if key == "START_HEIGHT" else ""
                 fields.append(f'<div class="field"><div><h2>{escape(label)}</h2><p class="help"><code>{escape(key)}</code></p></div><div>{control}<p class="help">{escape(help_text)}</p>{warning}</div></div>')
             return f'''
             <h1>Configuration</h1>
             <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
             {msg}
-            <div class="card warning"><p>Changes are written to <code>/data/frigate/settings.env</code>. Restart the Frigate app from Umbrel after saving for changes to apply.</p></div>
-            <form method="post" action="/config" class="card">
+            <div class="card warning"><p>Changes are written to <code>/data/frigate/settings.env</code>. Saving asks for confirmation and restarts Frigate automatically.</p></div>
+            <form method="post" action="/config" class="card" data-current-start-height="{escape(settings['START_HEIGHT'])}" onsubmit="return confirmConfigSave(this)">
               {''.join(fields)}
               <p><button type="submit">Save configuration</button></p>
             </form>
@@ -199,10 +219,11 @@ services:
                 if new["COMPUTE_BACKEND"] not in ("AUTO", "GPU", "CPU"):
                     new["COMPUTE_BACKEND"] = "AUTO"
                 write_settings(new)
+                RESTART_FILE.write_text(str(int(time.time())) + "\n")
                 if new["START_HEIGHT"] != old["START_HEIGHT"]:
-                    message = "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index on next app restart."
+                    message = "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart."
                 else:
-                    message = "Configuration saved. Restart the Frigate app from Umbrel for changes to apply."
+                    message = "Configuration saved. Frigate will restart automatically to apply changes."
                 self.respond(page("Frigate configuration", config_body(message), refresh=False))
 
             def respond(self, html):
@@ -242,7 +263,7 @@ services:
       mkdir -p /data/frigate
       if [ ! -f "$${settings_file}" ]; then
         {
-          printf "%s\n" "START_HEIGHT=950000"
+          printf "%s\n" "START_HEIGHT="
           printf "%s\n" "CACHE_SIZE=10M"
           printf "%s\n" "COMPUTE_BACKEND=AUTO"
           printf "%s\n" "DB_THREADS="
@@ -274,50 +295,72 @@ services:
         tar -xzf "$${tmp_file}" -C "$${install_dir}" --strip-components=1
         rm -f "$${tmp_file}"
       fi
-      network="$${APP_BITCOIN_NETWORK:-mainnet}"
-      home_dir="/data/frigate"
-      config_dir="$${home_dir}"
-      network_args=""
-      if [ "$${network}" != "mainnet" ]; then
-        config_dir="$${home_dir}/$${network}"
-        network_args="-n $${network}"
-      fi
-      mkdir -p "$${config_dir}"
-      desired_start_height="$${START_HEIGHT:-950000}"
-      start_height_marker="$${config_dir}/.umbrel-start-height"
-      if [ "$$(cat "$${start_height_marker}" 2>/dev/null || true)" != "$${desired_start_height}" ]; then
-        rm -rf "$${config_dir}/db"
-        printf "%s" "$${desired_start_height}" > "$${start_height_marker}"
-      fi
-      {
-        printf "%s\n" "[core]"
-        printf "%s\n" "connect = true"
-        printf "%s\n" "server = \"http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}\""
-        printf "%s\n" "authType = \"USERPASS\""
-        printf "%s\n" "auth = \"$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}\""
-        printf "%s\n" "zmqSequenceEndpoint = \"tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}\""
-        printf "%s\n" "rpcRequestTimeoutSeconds = $${RPC_REQUEST_TIMEOUT_SECONDS:-60}"
-        printf "%s\n" "rpcBatchSize = $${RPC_BATCH_SIZE:-100}"
-        printf "%s\n" ""
-        printf "%s\n" "[index]"
-        printf "%s\n" "startHeight = $${desired_start_height}"
-        printf "%s\n" "cacheSize = \"$${CACHE_SIZE:-10M}\""
-        printf "%s\n" ""
-        printf "%s\n" "[scan]"
-        printf "%s\n" "computeBackend = \"$${COMPUTE_BACKEND:-AUTO}\""
-        printf "%s\n" "maxLabels = $${MAX_LABELS:-10}"
-        printf "%s\n" "maxSubscriptions = $${MAX_SUBSCRIPTIONS:-100}"
-      } > "$${config_dir}/config.toml"
-      if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
-      if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
-      if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml"; fi
-      {
-        printf "%s\n" ""
-        printf "%s\n" "[server]"
-        printf "%s\n" "tcp = \"tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}\""
-        printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
-      } >> "$${config_dir}/config.toml"
-      exec "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args}
+      while true; do
+        . "$${settings_file}"
+        network="$${APP_BITCOIN_NETWORK:-mainnet}"
+        home_dir="/data/frigate"
+        config_dir="$${home_dir}"
+        network_args=""
+        if [ "$${network}" != "mainnet" ]; then
+          config_dir="$${home_dir}/$${network}"
+          network_args="-n $${network}"
+        fi
+        mkdir -p "$${config_dir}"
+        desired_start_height="$${START_HEIGHT:-}"
+        start_height_marker="$${config_dir}/.umbrel-start-height"
+        marker_value="$${desired_start_height:-default}"
+        if [ "$$(cat "$${start_height_marker}" 2>/dev/null || true)" != "$${marker_value}" ]; then
+          rm -rf "$${config_dir}/db"
+          printf "%s" "$${marker_value}" > "$${start_height_marker}"
+        fi
+        {
+          printf "%s\n" "[core]"
+          printf "%s\n" "connect = true"
+          printf "%s\n" "server = \"http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}\""
+          printf "%s\n" "authType = \"USERPASS\""
+          printf "%s\n" "auth = \"$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}\""
+          printf "%s\n" "zmqSequenceEndpoint = \"tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}\""
+          printf "%s\n" "rpcRequestTimeoutSeconds = $${RPC_REQUEST_TIMEOUT_SECONDS:-60}"
+          printf "%s\n" "rpcBatchSize = $${RPC_BATCH_SIZE:-100}"
+          printf "%s\n" ""
+          printf "%s\n" "[index]"
+          if [ -n "$${desired_start_height}" ]; then printf "%s\n" "startHeight = $${desired_start_height}"; fi
+          printf "%s\n" "cacheSize = \"$${CACHE_SIZE:-10M}\""
+          printf "%s\n" ""
+          printf "%s\n" "[scan]"
+          printf "%s\n" "computeBackend = \"$${COMPUTE_BACKEND:-AUTO}\""
+          printf "%s\n" "maxLabels = $${MAX_LABELS:-10}"
+          printf "%s\n" "maxSubscriptions = $${MAX_SUBSCRIPTIONS:-100}"
+        } > "$${config_dir}/config.toml"
+        if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
+        if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
+        if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml"; fi
+        {
+          printf "%s\n" ""
+          printf "%s\n" "[server]"
+          printf "%s\n" "tcp = \"tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}\""
+          printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
+        } >> "$${config_dir}/config.toml"
+        rm -f "$${config_dir}/frigate.log"
+        "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args} &
+        frigate_pid="$$!"
+        restart_requested="0"
+        while kill -0 "$${frigate_pid}" 2>/dev/null; do
+          if [ -f "$${home_dir}/.restart-requested" ]; then
+            restart_requested="1"
+            rm -f "$${home_dir}/.restart-requested"
+            kill "$${frigate_pid}" 2>/dev/null || true
+            wait "$${frigate_pid}" 2>/dev/null || true
+            break
+          fi
+          sleep 2
+        done
+        if [ "$${restart_requested}" = "1" ]; then
+          continue
+        fi
+        wait "$${frigate_pid}"
+        exit "$${?}"
+      done
       '
     volumes:
       - ${APP_DATA_DIR}/data/frigate:/data/frigate

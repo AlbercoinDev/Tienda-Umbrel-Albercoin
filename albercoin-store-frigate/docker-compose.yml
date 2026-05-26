@@ -7,118 +7,219 @@ services:
       APP_PORT: 80
 
   web:
-    image: nginx:1.27-alpine
+    image: python:3.12-alpine
     restart: on-failure
-    command: |
-      sh -c '
-      while true; do
-        network="$${APP_BITCOIN_NETWORK:-mainnet}"
-        if [ "$${network}" = "mainnet" ]; then
-          log_file="/data/frigate/frigate.log"
-        else
-          log_file="/data/frigate/$${network}/frigate.log"
-        fi
+    command:
+      - python
+      - -c
+      - |
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from html import escape
+        from pathlib import Path
+        from urllib.parse import parse_qs
+        import os
+        import time
 
-        status="Starting"
-        detail="Waiting for Frigate to write its first log entries."
-        if [ -f "$${log_file}" ]; then
-          recent="$$(tail -n 120 "$${log_file}" 2>/dev/null || true)"
-          if printf "%s" "$${recent}" | grep -qi "Electrum server listening"; then
-            status="Ready"
-            detail="Frigate is indexed and accepting Electrum connections."
-          elif printf "%s" "$${recent}" | grep -qi "ERROR"; then
-            status="Needs attention"
-            detail="Frigate reported an error. Check the log below."
-          else
-            status="Indexing / syncing"
-            detail="Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening."
-          fi
-          log_html="$$(tail -n 35 "$${log_file}" 2>/dev/null | sed "s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g" || true)"
-        else
-          log_html="No Frigate log found yet. The service may still be installing dependencies or downloading Frigate."
-        fi
+        DATA_DIR = Path("/data/frigate")
+        SETTINGS_FILE = DATA_DIR / "settings.env"
+        TOR_HOSTNAME_FILE = Path("/tor-data/app-albercoin-store-frigate-electrum/hostname")
 
-        clearnet_host="$${DEVICE_DOMAIN_NAME:-umbrel.local}"
-        clearnet_endpoint="$${clearnet_host}:$${APP_FRIGATE_ELECTRUM_PORT:-50005}"
-        onion_file="/tor-data/app-albercoin-store-frigate-electrum/hostname"
-        onion_host="$$(cat "$${onion_file}" 2>/dev/null || true)"
-        if [ -n "$${onion_host}" ]; then
-          onion_endpoint="$${onion_host}:$${APP_FRIGATE_ELECTRUM_PORT:-50005}"
-          onion_detail="Use this endpoint from Tor-enabled Electrum clients."
-        else
-          onion_endpoint="Generating onion address..."
-          onion_detail="Tor is still creating the hidden service hostname. Refreshes automatically."
-        fi
+        DEFAULTS = {
+            "START_HEIGHT": "950000",
+            "CACHE_SIZE": "10M",
+            "COMPUTE_BACKEND": "AUTO",
+            "DB_THREADS": "",
+            "MEMORY_LIMIT": "",
+            "BATCH_SIZE": "",
+            "MAX_LABELS": "10",
+            "MAX_SUBSCRIPTIONS": "100",
+            "RPC_REQUEST_TIMEOUT_SECONDS": "60",
+            "RPC_BATCH_SIZE": "100",
+        }
 
-        generated_at="$$(date -u "+%Y-%m-%d %H:%M:%S UTC")"
-        cat > /usr/share/nginx/html/index.html <<EOF
-      <!doctype html>
-      <html lang="en">
-      <head>
-        <meta charset="utf-8">
-        <meta http-equiv="refresh" content="10">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Frigate on Umbrel</title>
-        <style>
-          body { margin: 0; min-height: 100vh; background: #0b1020; color: #eaf6ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 28px 0; }
-          main { width: min(900px, calc(100% - 40px)); padding: 42px; border-radius: 28px; background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }
-          h1 { margin: 0 0 12px; font-size: clamp(34px, 7vw, 64px); line-height: 1; }
-          p { color: #c6d8e8; font-size: 18px; line-height: 1.6; }
-          code { background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; padding: 3px 8px; border-radius: 8px; }
-          .card { margin-top: 22px; padding: 22px; border-radius: 18px; background: rgba(0,0,0,.22); }
-          .status { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 999px; background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; font-weight: 700; }
-          .dot { width: 10px; height: 10px; border-radius: 999px; background: #5cc8ff; box-shadow: 0 0 18px #5cc8ff; }
-          .connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
-          .connection { padding: 18px; border-radius: 16px; background: rgba(92,200,255,.08); border: 1px solid rgba(92,200,255,.18); }
-          .connection h2 { margin: 0 0 8px; font-size: 16px; color: #ffffff; }
-          .connection p { margin: 8px 0 0; font-size: 14px; }
-          .endpoint { display: block; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }
-          dl { display: grid; grid-template-columns: 170px 1fr; gap: 10px 18px; margin: 0; color: #c6d8e8; }
-          dt { color: #8fb0c8; }
-          dd { margin: 0; }
-          pre { overflow: auto; white-space: pre-wrap; color: #cfeeff; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 16px; max-height: 360px; font-size: 13px; line-height: 1.45; }
-          @media (max-width: 720px) { .connections { grid-template-columns: 1fr; } dl { grid-template-columns: 1fr; } }
-        </style>
-      </head>
-      <body>
-        <main>
-          <h1>Frigate</h1>
-          <div class="status"><span class="dot"></span>$${status}</div>
-          <p>$${detail}</p>
-          <div class="connections">
-            <div class="connection">
-              <h2>Clearnet / LAN</h2>
-              <code class="endpoint">$${clearnet_endpoint}</code>
-              <p>Use this from wallets on your local network.</p>
+        FIELDS = [
+            ("START_HEIGHT", "Start height", "Block height where Frigate starts building its Silent Payments index. Changing this value requires deleting the DuckDB index and rebuilding from scratch. This is necessary because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core."),
+            ("CACHE_SIZE", "Cache size", "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems."),
+            ("COMPUTE_BACKEND", "Compute backend", "AUTO uses GPU if available and CPU otherwise. CPU forces CPU scanning. GPU forces GPU scanning."),
+            ("DB_THREADS", "DB threads", "Optional DuckDB thread limit. Useful to reduce CPU load when computeBackend is CPU. Leave empty for Frigate default."),
+            ("MEMORY_LIMIT", "Memory limit", "Optional DuckDB memory cap, e.g. 4GB, 8GB, 1024MB. Leave empty for Frigate default."),
+            ("BATCH_SIZE", "Batch size", "Optional rows per GPU dispatch. Reduce if scanning hangs or is unstable on older GPUs."),
+            ("MAX_LABELS", "Max labels", "Maximum Silent Payments labels accepted per subscription."),
+            ("MAX_SUBSCRIPTIONS", "Max subscriptions", "Maximum Silent Payments subscriptions per connection."),
+            ("RPC_REQUEST_TIMEOUT_SECONDS", "RPC request timeout", "Per-RPC read timeout against Bitcoin Core in seconds. Increase on slow nodes."),
+            ("RPC_BATCH_SIZE", "RPC batch size", "Maximum sub-requests per JSON-RPC array batch used during mempool indexing."),
+        ]
+
+        def ensure_settings():
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            if not SETTINGS_FILE.exists():
+                write_settings(DEFAULTS)
+
+        def read_settings():
+            ensure_settings()
+            values = DEFAULTS.copy()
+            for line in SETTINGS_FILE.read_text().splitlines():
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key in values:
+                    values[key] = value.strip()
+            return values
+
+        def write_settings(values):
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            lines = []
+            for key in DEFAULTS:
+                value = str(values.get(key, DEFAULTS[key])).strip()
+                value = value.replace("\n", "").replace("\r", "")
+                lines.append(f"{key}={value}")
+            SETTINGS_FILE.write_text("\n".join(lines) + "\n")
+
+        def log_path(network):
+            return DATA_DIR / "frigate.log" if network == "mainnet" else DATA_DIR / network / "frigate.log"
+
+        def latest_lines(path, limit=35):
+            if not path.exists():
+                return "No Frigate log found yet. The service may still be installing dependencies or downloading Frigate."
+            lines = path.read_text(errors="replace").splitlines()
+            return "\n".join(lines[-limit:])
+
+        def status_from_log(path):
+            if not path.exists():
+                return "Starting", "Waiting for Frigate to write its first log entries."
+            recent = "\n".join(path.read_text(errors="replace").splitlines()[-120:])
+            if "Electrum server listening" in recent:
+                return "Ready", "Frigate is indexed and accepting Electrum connections."
+            if "ERROR" in recent.upper():
+                return "Needs attention", "Frigate reported an error. Check the log below."
+            return "Indexing / syncing", "Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening."
+
+        def page(title, body, refresh=True):
+            refresh_tag = '<meta http-equiv="refresh" content="10">' if refresh else ""
+            return f'''<!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          {refresh_tag}
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>{escape(title)}</title>
+          <style>
+            body {{ margin: 0; min-height: 100vh; background: #0b1020; color: #eaf6ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 28px 0; }}
+            main {{ width: min(980px, calc(100% - 40px)); padding: 42px; border-radius: 28px; background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }}
+            h1 {{ margin: 0 0 12px; font-size: clamp(34px, 7vw, 64px); line-height: 1; }}
+            h2 {{ margin: 0 0 8px; font-size: 16px; color: #ffffff; }}
+            p {{ color: #c6d8e8; font-size: 18px; line-height: 1.6; }}
+            a, button {{ color: inherit; }}
+            nav {{ display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 4px; }}
+            nav a, button {{ border: 1px solid rgba(92,200,255,.32); background: rgba(92,200,255,.14); color: #9ee3ff; padding: 10px 14px; border-radius: 12px; text-decoration: none; font-weight: 700; cursor: pointer; }}
+            code, input, select {{ background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; padding: 8px 10px; border-radius: 8px; }}
+            input, select {{ width: 100%; box-sizing: border-box; color: #eaf6ff; }}
+            .card {{ margin-top: 22px; padding: 22px; border-radius: 18px; background: rgba(0,0,0,.22); }}
+            .status {{ display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 999px; background: rgba(92,200,255,.14); border: 1px solid rgba(92,200,255,.32); color: #9ee3ff; font-weight: 700; }}
+            .dot {{ width: 10px; height: 10px; border-radius: 999px; background: #5cc8ff; box-shadow: 0 0 18px #5cc8ff; }}
+            .connections {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }}
+            .connection {{ padding: 18px; border-radius: 16px; background: rgba(92,200,255,.08); border: 1px solid rgba(92,200,255,.18); }}
+            .endpoint {{ display: block; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }}
+            dl {{ display: grid; grid-template-columns: 170px 1fr; gap: 10px 18px; margin: 0; color: #c6d8e8; }}
+            dt {{ color: #8fb0c8; }}
+            dd {{ margin: 0; overflow-wrap: anywhere; }}
+            pre {{ overflow: auto; white-space: pre-wrap; color: #cfeeff; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 16px; max-height: 360px; font-size: 13px; line-height: 1.45; }}
+            .field {{ display: grid; grid-template-columns: 240px 1fr; gap: 14px 18px; padding: 18px 0; border-top: 1px solid rgba(255,255,255,.1); }}
+            .help {{ color: #a9bfd1; font-size: 14px; line-height: 1.45; margin-top: 8px; }}
+            .warning {{ border-color: rgba(255,190,92,.36); background: rgba(255,190,92,.1); color: #ffe0a3; }}
+            @media (max-width: 760px) {{ .connections, .field {{ grid-template-columns: 1fr; }} dl {{ grid-template-columns: 1fr; }} }}
+          </style>
+        </head>
+        <body><main>{body}</main></body></html>'''
+
+        def status_body(message=""):
+            settings = read_settings()
+            network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
+            lpath = log_path(network)
+            status, detail = status_from_log(lpath)
+            port = os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005")
+            clearnet_host = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local")
+            onion_host = TOR_HOSTNAME_FILE.read_text().strip() if TOR_HOSTNAME_FILE.exists() else "Generating onion address..."
+            onion_detail = "Use this host from Tor-enabled Electrum clients." if onion_host.endswith(".onion") else "Tor is still creating the hidden service hostname."
+            msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
+            return f'''
+            <h1>Frigate</h1>
+            <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
+            {msg}
+            <div class="status"><span class="dot"></span>{escape(status)}</div>
+            <p>{escape(detail)}</p>
+            <div class="connections">
+              <div class="connection"><h2>Clearnet / LAN</h2><dl><dt>Host</dt><dd><code class="endpoint">{escape(clearnet_host)}</code></dd><dt>Port</dt><dd><code>{escape(port)}</code></dd></dl><p>Use this from wallets on your local network.</p></div>
+              <div class="connection"><h2>Tor hidden service</h2><dl><dt>Host</dt><dd><code class="endpoint">{escape(onion_host)}</code></dd><dt>Port</dt><dd><code>{escape(port)}</code></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
-            <div class="connection">
-              <h2>Tor hidden service</h2>
-              <code class="endpoint">$${onion_endpoint}</code>
-              <p>$${onion_detail}</p>
-            </div>
-          </div>
-          <div class="card">
-            <dl>
-              <dt>Electrum TCP port</dt><dd><code>$${APP_FRIGATE_ELECTRUM_PORT:-50005}</code></dd>
-              <dt>Bitcoin network</dt><dd><code>$${network}</code></dd>
-              <dt>Start block</dt><dd><code>950000</code></dd>
-              <dt>Log file</dt><dd><code>$${log_file}</code></dd>
-              <dt>Updated</dt><dd>$${generated_at}</dd>
-            </dl>
-          </div>
-          <div class="card">
-            <p>Latest Frigate log lines:</p>
-            <pre>$${log_html}</pre>
-          </div>
-        </main>
-      </body>
-      </html>
-      EOF
-        sleep 5
-      done &
-      nginx -g "daemon off;"'
+            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Start block</dt><dd><code>{escape(settings["START_HEIGHT"])}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
+            <div class="card"><p>Latest Frigate log lines:</p><pre>{escape(latest_lines(lpath))}</pre></div>
+            '''
+
+        def config_body(message=""):
+            settings = read_settings()
+            msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
+            fields = []
+            for key, label, help_text in FIELDS:
+                value = settings.get(key, DEFAULTS[key])
+                if key == "COMPUTE_BACKEND":
+                    control = '<select name="COMPUTE_BACKEND">' + ''.join(f'<option value="{v}" {"selected" if value == v else ""}>{v}</option>' for v in ["AUTO", "GPU", "CPU"]) + '</select>'
+                else:
+                    control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(DEFAULTS[key])}">'
+                warning = '<p class="help"><strong>Important:</strong> changing start height deletes the local db/ index on next Frigate start so it can be rebuilt correctly from the new height.</p>' if key == "START_HEIGHT" else ""
+                fields.append(f'<div class="field"><div><h2>{escape(label)}</h2><p class="help"><code>{escape(key)}</code></p></div><div>{control}<p class="help">{escape(help_text)}</p>{warning}</div></div>')
+            return f'''
+            <h1>Configuration</h1>
+            <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
+            {msg}
+            <div class="card warning"><p>Changes are written to <code>/data/frigate/settings.env</code>. Restart the Frigate app from Umbrel after saving for changes to apply.</p></div>
+            <form method="post" action="/config" class="card">
+              {''.join(fields)}
+              <p><button type="submit">Save configuration</button></p>
+            </form>
+            '''
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path.startswith("/config"):
+                    self.respond(page("Frigate configuration", config_body(), refresh=False))
+                else:
+                    self.respond(page("Frigate on Umbrel", status_body(), refresh=True))
+
+            def do_POST(self):
+                if not self.path.startswith("/config"):
+                    self.send_error(404)
+                    return
+                length = int(self.headers.get("content-length", "0"))
+                form = parse_qs(self.rfile.read(length).decode())
+                old = read_settings()
+                new = DEFAULTS.copy()
+                for key in DEFAULTS:
+                    new[key] = form.get(key, [old.get(key, DEFAULTS[key])])[0].strip()
+                if new["COMPUTE_BACKEND"] not in ("AUTO", "GPU", "CPU"):
+                    new["COMPUTE_BACKEND"] = "AUTO"
+                write_settings(new)
+                if new["START_HEIGHT"] != old["START_HEIGHT"]:
+                    message = "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index on next app restart."
+                else:
+                    message = "Configuration saved. Restart the Frigate app from Umbrel for changes to apply."
+                self.respond(page("Frigate configuration", config_body(message), refresh=False))
+
+            def respond(self, html):
+                data = html.encode()
+                self.send_response(200)
+                self.send_header("content-type", "text/html; charset=utf-8")
+                self.send_header("content-length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *_):
+                return
+
+        ensure_settings()
+        ThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
     volumes:
-      - ${APP_DATA_DIR}/data/frigate:/data/frigate:ro
+      - ${APP_DATA_DIR}/data/frigate:/data/frigate
       - ${TOR_DATA_DIR}:/tor-data:ro
     environment:
       APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
@@ -137,6 +238,23 @@ services:
       set -eu
       FRIGATE_VERSION="$${FRIGATE_VERSION:-1.5.2}"
       runtime_dir="/data/frigate/runtime"
+      settings_file="/data/frigate/settings.env"
+      mkdir -p /data/frigate
+      if [ ! -f "$${settings_file}" ]; then
+        {
+          printf "%s\n" "START_HEIGHT=950000"
+          printf "%s\n" "CACHE_SIZE=10M"
+          printf "%s\n" "COMPUTE_BACKEND=AUTO"
+          printf "%s\n" "DB_THREADS="
+          printf "%s\n" "MEMORY_LIMIT="
+          printf "%s\n" "BATCH_SIZE="
+          printf "%s\n" "MAX_LABELS=10"
+          printf "%s\n" "MAX_SUBSCRIPTIONS=100"
+          printf "%s\n" "RPC_REQUEST_TIMEOUT_SECONDS=60"
+          printf "%s\n" "RPC_BATCH_SIZE=100"
+        } > "$${settings_file}"
+      fi
+      . "$${settings_file}"
       apt-get update
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar
       rm -rf /var/lib/apt/lists/*
@@ -165,31 +283,40 @@ services:
         network_args="-n $${network}"
       fi
       mkdir -p "$${config_dir}"
-      desired_start_height="950000"
+      desired_start_height="$${START_HEIGHT:-950000}"
       start_height_marker="$${config_dir}/.umbrel-start-height"
       if [ "$$(cat "$${start_height_marker}" 2>/dev/null || true)" != "$${desired_start_height}" ]; then
         rm -rf "$${config_dir}/db"
         printf "%s" "$${desired_start_height}" > "$${start_height_marker}"
       fi
-      cat > "$${config_dir}/config.toml" <<EOF
-      [core]
-      connect = true
-      server = "http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}"
-      authType = "USERPASS"
-      auth = "$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}"
-      zmqSequenceEndpoint = "tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
-
-      [index]
-      startHeight = $${desired_start_height}
-      cacheSize = "10M"
-
-      [scan]
-      computeBackend = "AUTO"
-
-      [server]
-      tcp = "tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}"
-      backendElectrumServer = "tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}"
-      EOF
+      {
+        printf "%s\n" "[core]"
+        printf "%s\n" "connect = true"
+        printf "%s\n" "server = \"http://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_RPC_PORT}\""
+        printf "%s\n" "authType = \"USERPASS\""
+        printf "%s\n" "auth = \"$${APP_BITCOIN_RPC_USER}:$${APP_BITCOIN_RPC_PASS}\""
+        printf "%s\n" "zmqSequenceEndpoint = \"tcp://$${APP_BITCOIN_NODE_IP}:$${APP_BITCOIN_ZMQ_SEQUENCE_PORT}\""
+        printf "%s\n" "rpcRequestTimeoutSeconds = $${RPC_REQUEST_TIMEOUT_SECONDS:-60}"
+        printf "%s\n" "rpcBatchSize = $${RPC_BATCH_SIZE:-100}"
+        printf "%s\n" ""
+        printf "%s\n" "[index]"
+        printf "%s\n" "startHeight = $${desired_start_height}"
+        printf "%s\n" "cacheSize = \"$${CACHE_SIZE:-10M}\""
+        printf "%s\n" ""
+        printf "%s\n" "[scan]"
+        printf "%s\n" "computeBackend = \"$${COMPUTE_BACKEND:-AUTO}\""
+        printf "%s\n" "maxLabels = $${MAX_LABELS:-10}"
+        printf "%s\n" "maxSubscriptions = $${MAX_SUBSCRIPTIONS:-100}"
+      } > "$${config_dir}/config.toml"
+      if [ -n "$${DB_THREADS:-}" ]; then printf "dbThreads = %s\n" "$${DB_THREADS}" >> "$${config_dir}/config.toml"; fi
+      if [ -n "$${MEMORY_LIMIT:-}" ]; then printf "memoryLimit = \"%s\"\n" "$${MEMORY_LIMIT}" >> "$${config_dir}/config.toml"; fi
+      if [ -n "$${BATCH_SIZE:-}" ]; then printf "batchSize = %s\n" "$${BATCH_SIZE}" >> "$${config_dir}/config.toml"; fi
+      {
+        printf "%s\n" ""
+        printf "%s\n" "[server]"
+        printf "%s\n" "tcp = \"tcp://0.0.0.0:$${APP_FRIGATE_ELECTRUM_PORT}\""
+        printf "%s\n" "backendElectrumServer = \"tcp://$${APP_ELECTRS_NODE_IP}:$${APP_ELECTRS_NODE_PORT}\""
+      } >> "$${config_dir}/config.toml"
       exec "$${install_dir}/bin/frigate" -d "$${home_dir}" $${network_args}
       '
     volumes:

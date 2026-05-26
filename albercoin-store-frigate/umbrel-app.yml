@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.5.3"
+version: "1.5.2-02"
 tagline: Electrum server for Silent Payments
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.svg
 description: >-
@@ -29,12 +29,12 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  This package update adds Tor connection details to the Frigate status page and
-  fixes the app details page in the Umbrel store.
+  Umbrel package revision 02 for Frigate 1.5.2.
 
 
-  The Frigate binary remains pinned to upstream version 1.5.2 and listens on
-  port 50005 to avoid conflicting with Electrs on port 50001.
+  Adds a configuration panel for Frigate settings, separates host and port for
+  clearnet and Tor connection details, and keeps the Frigate binary pinned to
+  upstream version 1.5.2.
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:

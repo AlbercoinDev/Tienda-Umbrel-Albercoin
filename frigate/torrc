@@ -1,3 +1,0 @@
-HiddenServiceDir /data/app-frigate-electrum
-HiddenServiceVersion 3
-HiddenServicePort 50005 frigate:50005

@@ -135,7 +135,7 @@ services:
     command: |
       sh -c '
       set -eu
-      FRIGATE_VERSION="$${APP_VERSION:-1.5.2}"
+      FRIGATE_VERSION="$${FRIGATE_VERSION:-1.5.2}"
       runtime_dir="/data/frigate/runtime"
       apt-get update
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar
@@ -196,6 +196,7 @@ services:
       - ${APP_DATA_DIR}/data/frigate:/data/frigate
     environment:
       APP_VERSION: "${APP_VERSION}"
+      FRIGATE_VERSION: "1.5.2"
       APP_BITCOIN_NETWORK: "${APP_BITCOIN_NETWORK}"
       APP_BITCOIN_NODE_IP: "${APP_BITCOIN_NODE_IP}"
       APP_BITCOIN_RPC_PORT: "${APP_BITCOIN_RPC_PORT}"

@@ -1,19 +1,16 @@
-from pydantic import BaseModel
-from typing import Optional
+from dataclasses import dataclass
 
 
-class AppInfo(BaseModel):
+@dataclass
+class AppInfo:
     app_id: str
     hostname_path: str
     onion_address: str
     status: str
 
 
-class RotateRequest(BaseModel):
-    app_ids: list[str]
-
-
-class RotateResult(BaseModel):
+@dataclass
+class RotateResult:
     app_id: str
     old_onion: str
     new_onion: str
@@ -21,17 +18,15 @@ class RotateResult(BaseModel):
     message: str
 
 
-class RotateResponse(BaseModel):
-    results: list[RotateResult]
-
-
-class LogEntry(BaseModel):
+@dataclass
+class LogEntry:
     timestamp: str
     level: str
     message: str
 
 
-class HealthResponse(BaseModel):
+@dataclass
+class HealthResponse:
     status: str
     tor_data_dir: str
     tor_data_accessible: bool

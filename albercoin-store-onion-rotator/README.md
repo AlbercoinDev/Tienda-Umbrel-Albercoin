@@ -99,17 +99,15 @@ Set `ONION_ROTATOR_DEBUG=true` for verbose logging.
 ```bash
 # Prerequisites
 python 3.12+
-pip
 
 # Setup
 cd albercoin-store-onion-rotator
-pip install -r requirements.txt
 
 # Run with mock data
 ONION_ROTATOR_DRY_RUN=true \
 ONION_ROTATOR_DEBUG=true \
 TOR_DATA_DIR=/tmp/onion-rotator-dev-tor \
-uvicorn src.main:app --host 0.0.0.0 --port 8900 --reload
+python src/main.py
 
 # Or use the dev script
 ./scripts/dev.sh
@@ -156,16 +154,16 @@ albercoin-store-onion-rotator/
 ├── umbrel-app.yml          # Umbrel app manifest
 ├── docker-compose.yml      # Docker services
 ├── Dockerfile              # Container build
-├── requirements.txt        # Python dependencies
+├── requirements.txt        # Empty; no runtime dependencies
 ├── icon.svg                # App icon
 ├── README.md               # This file
 ├── src/
-│   ├── main.py             # FastAPI app + API endpoints
+│   ├── main.py             # HTTP server + API endpoints
 │   ├── config.py           # Configuration
 │   ├── detector.py         # Tor hostname scanning
 │   ├── rotator.py          # Rotation logic
 │   ├── restarter.py        # Docker-based app restart
-│   ├── models.py           # Pydantic models
+│   ├── models.py           # API model reference
 │   ├── i18n.py             # Translations (EN/ES)
 │   └── static/
 │       └── index.html      # Web interface

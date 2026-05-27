@@ -1,7 +1,9 @@
 services:
   app_proxy:
+    depends_on:
+      - server
     environment:
-      APP_HOST: albercoin-store-onion-rotator_server_1
+      APP_HOST: server
       APP_PORT: 8900
 
   server:
@@ -15,5 +17,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:rw
     environment:
       UMBREL_ROOT: ${UMBREL_ROOT}
+      TOR_DATA_DIR: /tor-data
       ONION_ROTATOR_DRY_RUN: "false"
       ONION_ROTATOR_DEBUG: "false"

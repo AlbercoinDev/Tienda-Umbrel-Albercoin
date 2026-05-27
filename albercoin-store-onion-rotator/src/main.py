@@ -1,17 +1,14 @@
 import logging
-import json
 import os
 from datetime import datetime
-from typing import Optional
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
 from contextlib import asynccontextmanager
 
-from config import DRY_RUN, DEBUG, LOG_MAX_LINES
+from config import DRY_RUN, DEBUG, LOG_MAX_LINES, TOR_DATA_DIR
 from detector import scan_apps
 from rotator import rotate_single
-from restarter import is_docker_accessible
+from restarter import is_docker_accessible, get_docker_client
 from models import RotateRequest, HealthResponse
 from i18n import TRANSLATIONS
 
@@ -41,25 +38,37 @@ logging.getLogger("onion_rotator").addHandler(LogHandler())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Onion Rotator starting (dry_run={DRY_RUN}, debug={DEBUG})")
+    logger.info(f"=== Onion Rotator v1.0.1 starting ===")
+    logger.info(f"DRY_RUN={DRY_RUN}, DEBUG={DEBUG}")
+    logger.info(f"TOR_DATA_DIR={TOR_DATA_DIR}")
+    logger.info(f"tor_data_exists={os.path.isdir(TOR_DATA_DIR)}")
+
+    docker_ok = is_docker_accessible()
+    logger.info(f"docker_accessible={docker_ok}")
+    if docker_ok:
+        try:
+            info = get_docker_client().info()
+            logger.info(f"docker_version={info.get('ServerVersion', 'unknown')}")
+        except Exception:
+            pass
+    else:
+        logger.warning("Docker socket not accessible — restart will fail")
+
     yield
     logger.info("Onion Rotator shutting down")
 
 
-app = FastAPI(title="Onion Rotator", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Onion Rotator", version="1.0.1", lifespan=lifespan)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(
         status="ok",
-        tor_data_dir=os.environ.get("TOR_DATA_DIR", ""),
-        tor_data_accessible=os.path.isdir(
-            os.environ.get("TOR_DATA_DIR", "/nonexistent")
-        ),
+        tor_data_dir=TOR_DATA_DIR,
+        tor_data_accessible=os.path.isdir(TOR_DATA_DIR),
         docker_accessible=is_docker_accessible(),
         dry_run=DRY_RUN,
     )

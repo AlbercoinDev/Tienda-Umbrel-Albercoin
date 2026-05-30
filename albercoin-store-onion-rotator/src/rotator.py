@@ -175,11 +175,11 @@ def rotate_app_services(app: dict, selected_service_ids: list[str], progress: Pr
             emit("error", message, {"services": result["services"]})
             return result
 
-    emit("restarting", "Restarting app Tor service")
-    restart_ok, restart_msg = restart_app_tor_server(app_id)
+    emit("restarting", "Restarting app containers")
+    restart_ok, restart_msg = restart_app(app_id)
     if not restart_ok:
-        emit("restarting", "tor_server restart failed; restarting all app containers")
-        restart_ok, restart_msg = restart_app(app_id)
+        emit("restarting", "app restart failed; trying app tor_server")
+        restart_ok, restart_msg = restart_app_tor_server(app_id)
     if not restart_ok:
         result["status"] = "restart_failed"
         for service_result in result["services"]:

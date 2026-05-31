@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +15,19 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(title="Machine Doctor", version="0.1.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def normalize_umbrel_prefixed_paths(request: Request, call_next):
+    path = request.scope.get("path", "")
+    for marker in ("/api/", "/static/"):
+        marker_index = path.find(marker)
+        if marker_index > 0:
+            request.scope["path"] = path[marker_index:]
+            break
+    if path.endswith("/health") and path != "/health":
+        request.scope["path"] = "/health"
+    return await call_next(request)
 
 
 @app.on_event("shutdown")
@@ -66,3 +79,8 @@ def report_latest() -> JSONResponse:
     if report is None:
         return JSONResponse({"report": None}, status_code=404)
     return JSONResponse({"report": report})
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+def index_fallback(full_path: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")

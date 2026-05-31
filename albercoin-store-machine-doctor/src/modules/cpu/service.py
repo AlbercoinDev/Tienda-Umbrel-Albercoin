@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .report import build_report, save_report
-from .sensors import cpu_usage_percent, read_cpu_info, read_frequencies, read_load_average, read_proc_stat, read_temperatures
+from .sensors import cpu_usage_percent, read_cpu_info, read_cpu_topology, read_frequencies, read_load_average, read_proc_stat, read_temperatures
 from .stress import StressProcess
 
 
@@ -73,7 +73,7 @@ class CpuCheckService:
                 "started_at": datetime.now(UTC).isoformat(),
                 "remaining_seconds": TEST_DURATION_SECONDS,
             })
-            self._thread = threading.Thread(target=self._run_test, daemon=True)
+            self._thread = threading.Thread(target=self._run_test_safe, daemon=True)
             self._thread.start()
             return {"status": "started", "duration_seconds": TEST_DURATION_SECONDS}
 
@@ -90,10 +90,17 @@ class CpuCheckService:
     def shutdown(self) -> None:
         self.cancel()
 
+    def _run_test_safe(self) -> None:
+        try:
+            self._run_test()
+        except Exception as exc:
+            self._finish("FAIL", [], [f"Unexpected CPU test error: {exc}"], {"returncode": None, "stdout": "", "stderr": str(exc)})
+
     def _sample(self, previous_stat: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
         current_stat = read_proc_stat()
         cpu_info = self._state.get("cpu_info", read_cpu_info())
         temperatures = read_temperatures()
+        topology = read_cpu_topology()
         frequencies = read_frequencies(cpu_info.get("cpuinfo_mhz", {}))
         total_usage = None
         core_usage: dict[int, float | None] = {}
@@ -105,12 +112,28 @@ class CpuCheckService:
                 core_usage[core_id] = cpu_usage_percent(previous_values, current_values)
 
         per_core = []
+        core_temperatures = temperatures.get("core_temperatures", {})
+        cpu_temperature = temperatures.get("cpu")
         for core_id in sorted(current_stat.get("cores", {}).keys()):
+            temperature = None
+            temperature_source = None
+            if core_id in core_temperatures:
+                temperature = core_temperatures[core_id]
+                temperature_source = "core"
+            else:
+                physical_core_id = topology.get(core_id, {}).get("core_id")
+                if physical_core_id in core_temperatures:
+                    temperature = core_temperatures[physical_core_id]
+                    temperature_source = "physical_core"
+                elif isinstance(cpu_temperature, (int, float)):
+                    temperature = cpu_temperature
+                    temperature_source = "cpu_global"
             per_core.append({
                 "core": core_id,
                 "usage": core_usage.get(core_id),
                 "frequency_mhz": frequencies.get(core_id),
-                "temperature": None,
+                "temperature": temperature,
+                "temperature_source": temperature_source,
             })
 
         sample = {
@@ -118,6 +141,7 @@ class CpuCheckService:
             "cpu_total_usage": total_usage,
             "cpu_core_usage": core_usage,
             "temperature_cpu": temperatures.get("cpu"),
+            "temperature_per_core": core_temperatures,
             "temperatures": temperatures.get("sensors", []),
             "frequency_per_core_mhz": frequencies,
             "load_average": read_load_average(),
@@ -214,10 +238,16 @@ class CpuCheckService:
         expected_cores = cpu_info.get("cores") or 0
         core_samples = [s.get("per_core", []) for s in samples if s.get("per_core")]
         if expected_cores and core_samples:
-            last_cores = core_samples[-1]
-            high_load_cores = [c for c in last_cores if isinstance(c.get("usage"), (int, float)) and c["usage"] >= CPU_MIN_EXPECTED_LOAD]
+            max_usage_by_core: dict[int, float] = {}
+            for sample_cores in core_samples:
+                for core in sample_cores:
+                    core_id = core.get("core")
+                    usage = core.get("usage")
+                    if isinstance(core_id, int) and isinstance(usage, (int, float)):
+                        max_usage_by_core[core_id] = max(max_usage_by_core.get(core_id, 0.0), usage)
+            high_load_cores = [usage for usage in max_usage_by_core.values() if usage >= CPU_MIN_EXPECTED_LOAD]
             if len(high_load_cores) < max(1, int(expected_cores * 0.75)):
-                warnings.append("Not all CPU cores were observed at high load in the latest sample")
+                warnings.append("Not all CPU cores were observed at high load during the test")
 
         if sensor_counts and max(sensor_counts) == 0:
             warnings.append("No hardware sensors were available")

@@ -5,11 +5,17 @@ function fmtPercent(value){return typeof value==='number'?`${value.toFixed(1)}%`
 function fmtTemp(value){return typeof value==='number'?`${value.toFixed(1)} ºC`:'-'}
 function fmtFreq(value){return typeof value==='number'?`${value.toFixed(0)} MHz`:'-'}
 function esc(value){const div=document.createElement('div');div.textContent=value==null?'':String(value);return div.innerHTML}
+function fmtCoreTemp(core){
+  if(typeof core.temperature!=='number')return 'Not exposed';
+  const suffix=core.temperature_source==='cpu_global'?' <small>(CPU sensor)</small>':core.temperature_source==='physical_core'?' <small>(core sensor)</small>':'';
+  return `${core.temperature.toFixed(1)} ºC${suffix}`;
+}
 
 async function json(path, options={}){
   const res=await fetch(API.url(path),options);
   const text=await res.text();
-  const data=text?JSON.parse(text):{};
+  let data={};
+  try{data=text?JSON.parse(text):{};}catch(e){throw new Error(`Expected JSON from ${path}, got: ${text.slice(0,120)}`)}
   if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
   return data;
 }
@@ -58,7 +64,7 @@ function renderCores(sample){
   if(!cores.length){body.innerHTML='<tr><td colspan="4">Waiting for samples...</td></tr>';return}
   body.innerHTML=cores.map(core=>{
     const usage=typeof core.usage==='number'?core.usage:0;
-    return `<tr><td>CPU ${esc(core.core)}</td><td><div class="bar-cell"><div class="mini-bar"><span style="width:${usage}%"></span></div>${fmtPercent(core.usage)}</div></td><td>${fmtFreq(core.frequency_mhz)}</td><td>${fmtTemp(core.temperature)}</td></tr>`;
+    return `<tr><td>CPU ${esc(core.core)}</td><td><div class="bar-cell"><div class="mini-bar"><span style="width:${usage}%"></span></div>${fmtPercent(core.usage)}</div></td><td>${fmtFreq(core.frequency_mhz)}</td><td>${fmtCoreTemp(core)}</td></tr>`;
   }).join('');
 }
 
@@ -86,7 +92,10 @@ async function refresh(){
 }
 
 async function startTest(){
-  try{await json('api/cpu/start',{method:'POST'});await refresh();if(!pollTimer)pollTimer=setInterval(refresh,1000);}catch(e){alert(e.message)}
+  const button=document.getElementById('start-btn');
+  button.disabled=true;
+  button.textContent='Starting...';
+  try{await json('api/cpu/start',{method:'POST'});await refresh();if(!pollTimer)pollTimer=setInterval(refresh,1000);}catch(e){document.getElementById('final-result').textContent=e.message;alert(e.message)}finally{button.textContent='Start CPU test';await refresh()}
 }
 
 async function cancelTest(){

@@ -125,6 +125,23 @@ def read_frequencies(cpuinfo_mhz: dict[int, float] | None = None) -> dict[int, f
     return result
 
 
+def read_cpu_topology() -> dict[int, dict[str, int | None]]:
+    topology: dict[int, dict[str, int | None]] = {}
+    cpu_root = HOST_SYS / "devices/system/cpu"
+    for cpu_path in sorted(cpu_root.glob("cpu[0-9]*")):
+        match = re.fullmatch(r"cpu(\d+)", cpu_path.name)
+        if not match:
+            continue
+        logical_id = int(match.group(1))
+        core_id = _read_number(cpu_path / "topology/core_id")
+        package_id = _read_number(cpu_path / "topology/physical_package_id")
+        topology[logical_id] = {
+            "core_id": int(core_id) if core_id is not None else None,
+            "package_id": int(package_id) if package_id is not None else None,
+        }
+    return topology
+
+
 def _thermal_zone_name(zone: Path) -> str:
     zone_type = _read_text(zone / "type")
     return zone_type or zone.name
@@ -143,13 +160,24 @@ def _normalize_temp(raw: float | None) -> float | None:
     return round(raw, 1)
 
 
+def _core_id_from_label(label: str) -> int | None:
+    match = re.search(r"\bcore\s*(\d+)\b", label, re.I)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"\bcpu\s*(\d+)\b", label, re.I)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def read_temperatures() -> dict[str, Any]:
     sensors: list[dict[str, Any]] = []
 
     for zone in sorted((HOST_SYS / "class/thermal").glob("thermal_zone*")):
         value = _normalize_temp(_read_number(zone / "temp"))
         if value is not None:
-            sensors.append({"id": zone.name, "name": _thermal_zone_name(zone), "temperature": value, "source": "thermal"})
+            name = _thermal_zone_name(zone)
+            sensors.append({"id": zone.name, "name": name, "temperature": value, "source": "thermal", "core_id": _core_id_from_label(name)})
 
     for hwmon in sorted((HOST_SYS / "class/hwmon").glob("hwmon*")):
         hwmon_name = _hwmon_name(hwmon)
@@ -158,11 +186,13 @@ def read_temperatures() -> dict[str, Any]:
             label = _read_text(hwmon / f"temp{number}_label")
             value = _normalize_temp(_read_number(temp_input))
             if value is not None:
+                name = label or hwmon_name
                 sensors.append({
                     "id": f"{hwmon.name}:{temp_input.name}",
-                    "name": label or hwmon_name,
+                    "name": name,
                     "temperature": value,
                     "source": "hwmon",
+                    "core_id": _core_id_from_label(name),
                 })
 
     cpu_candidates = [s for s in sensors if re.search(r"cpu|core|package|soc|tctl|tdie|thermal", s["name"], re.I)]
@@ -170,4 +200,11 @@ def read_temperatures() -> dict[str, Any]:
     if current is None and sensors:
         current = max(s["temperature"] for s in sensors)
 
-    return {"cpu": current, "sensors": sensors}
+    core_temperatures: dict[int, float] = {}
+    for sensor in sensors:
+        core_id = sensor.get("core_id")
+        temperature = sensor.get("temperature")
+        if isinstance(core_id, int) and isinstance(temperature, (int, float)):
+            core_temperatures[core_id] = temperature
+
+    return {"cpu": current, "core_temperatures": core_temperatures, "sensors": sensors}

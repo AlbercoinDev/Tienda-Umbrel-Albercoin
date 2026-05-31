@@ -3,7 +3,7 @@ version: "3.7"
 services:
   app_proxy:
     environment:
-      APP_HOST: machine-doctor-web
+      APP_HOST: server
       APP_PORT: 2190
 
   server:

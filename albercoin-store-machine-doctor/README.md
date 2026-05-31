@@ -34,7 +34,7 @@ Machine Doctor runs inside Docker and reads host hardware information through re
 
 The first release uses `privileged: true` for broad Umbrel OS, Raspberry Pi and mini PC compatibility. The app does not expose a shell and does not accept arbitrary commands from the web interface.
 
-The Umbrel package uses the included `Dockerfile` so `stress-ng` and Python dependencies are installed at build time, not on every app start.
+The Umbrel package uses the prebuilt `ghcr.io/albercoindev/machine-doctor` image so `stress-ng` and Python dependencies are already available when the app starts.
 
 ## Configuration
 
@@ -57,7 +57,7 @@ For a quick development test, temporarily set:
 TEST_DURATION_SECONDS: "30"
 ```
 
-Then rebuild and start the app through Umbrel. Open Machine Doctor, click **Start CPU test**, watch live samples, and open **View latest report** after the test finishes.
+Then rebuild the Docker image for development, or install the published app through Umbrel. Open Machine Doctor, click **Start CPU test**, watch live samples, and open **View latest report** after the test finishes.
 
 ## Report Format
 

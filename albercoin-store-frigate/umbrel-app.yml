@@ -2,7 +2,7 @@ manifestVersion: 1
 id: albercoin-store-frigate
 category: bitcoin
 name: Frigate
-version: "1.5.2-05"
+version: "1.5.2-06"
 tagline: Electrum server for Silent Payments
 icon: https://raw.githubusercontent.com/AlbercoinDev/Umbrel-AppStore-Albercoin/master/albercoin-store-frigate/icon.png
 description: >-
@@ -29,12 +29,12 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Umbrel package revision 05 for Frigate 1.5.2.
+  Umbrel package revision 06 for Frigate 1.5.2.
 
 
-  Keeps the status page marked Ready after Frigate has been running for a while,
-  even when the initial Electrum server startup line has scrolled out of the
-  latest visible log entries.
+  Adds English and Spanish text to the Frigate web interface. The page follows
+  the browser/Umbrel language when Spanish is selected and falls back to English
+  for other languages.
 submitter: AlbercoinDev
 submission: https://github.com/AlbercoinDev/Umbrel-AppStore-Albercoin
 backupIgnore:

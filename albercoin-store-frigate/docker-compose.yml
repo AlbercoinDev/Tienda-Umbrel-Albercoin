@@ -39,18 +39,84 @@ services:
             "RPC_BATCH_SIZE": "100",
         }
 
-        FIELDS = [
-            ("START_HEIGHT", "Start height", "Optional block height where Frigate starts building its Silent Payments index. Leave empty to use Frigate's official default: 709632 on mainnet (Taproot activation), 0 on test networks. Changing this value requires deleting the DuckDB index and rebuilding from scratch because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core."),
-            ("CACHE_SIZE", "Cache size", "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems."),
-            ("COMPUTE_BACKEND", "Compute backend", "AUTO uses GPU if available and CPU otherwise. CPU forces CPU scanning. GPU forces GPU scanning."),
-            ("DB_THREADS", "DB threads", "Optional DuckDB thread limit. Useful to reduce CPU load when computeBackend is CPU. Leave empty for Frigate default."),
-            ("MEMORY_LIMIT", "Memory limit", "Optional DuckDB memory cap, e.g. 4GB, 8GB, 1024MB. Leave empty for Frigate default."),
-            ("BATCH_SIZE", "Batch size", "Optional rows per GPU dispatch. Reduce if scanning hangs or is unstable on older GPUs."),
-            ("MAX_LABELS", "Max labels", "Maximum Silent Payments labels accepted per subscription."),
-            ("MAX_SUBSCRIPTIONS", "Max subscriptions", "Maximum Silent Payments subscriptions per connection."),
-            ("RPC_REQUEST_TIMEOUT_SECONDS", "RPC request timeout", "Per-RPC read timeout against Bitcoin Core in seconds. Increase on slow nodes."),
-            ("RPC_BATCH_SIZE", "RPC batch size", "Maximum sub-requests per JSON-RPC array batch used during mempool indexing."),
-        ]
+        FIELDS = ["START_HEIGHT", "CACHE_SIZE", "COMPUTE_BACKEND", "DB_THREADS", "MEMORY_LIMIT", "BATCH_SIZE", "MAX_LABELS", "MAX_SUBSCRIPTIONS", "RPC_REQUEST_TIMEOUT_SECONDS", "RPC_BATCH_SIZE"]
+
+        TEXT = {
+            "en": {
+                "status": "Status", "configuration": "Configuration", "copied": "Copied", "copy": "Copy",
+                "confirm_start_height": "Changing Start height changes the index range. Frigate will delete db/ and rebuild the index from scratch, then restart automatically. Continue?",
+                "confirm_restart": "Save configuration and restart Frigate automatically now?",
+                "no_log": "No Frigate log found yet. The service may still be installing dependencies or downloading Frigate.",
+                "status_starting": "Starting", "detail_starting": "Waiting for Frigate to write its first log entries.",
+                "status_attention": "Needs attention", "detail_attention": "Frigate reported an error. Check the log below.",
+                "status_ready": "Ready", "detail_ready": "Frigate is indexed and accepting Electrum connections.",
+                "status_indexing": "Indexing / syncing", "detail_indexing": "Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening.",
+                "default_suffix": "Frigate default", "calculating": "Calculating...",
+                "onion_generating": "Generating onion address...", "onion_ready": "Use this host from Tor-enabled Electrum clients.", "onion_waiting": "Tor is still creating the hidden service hostname.",
+                "restart_requested": "Restart requested. Frigate will reload configuration shortly.",
+                "indexing_progress": "Indexing progress", "progress": "Progress", "start_block": "Start block", "indexed_block": "Indexed block", "chain_tip": "Chain tip",
+                "clearnet": "Clearnet / LAN", "host": "Host", "port": "Port", "clearnet_help": "Use this from wallets on your local network.", "tor_service": "Tor hidden service",
+                "bitcoin_network": "Bitcoin network", "configured_start_block": "Configured start block", "cache_size": "Cache size", "compute_backend": "Compute backend", "log_file": "Log file", "updated": "Updated", "latest_logs": "Latest Frigate log lines:",
+                "config_notice": "Changes are written to /data/frigate/settings.env. Saving asks for confirmation and restarts Frigate automatically.", "save_configuration": "Save configuration",
+                "important": "Important:", "start_height_warning": "changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.",
+                "saved_start_height": "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart.",
+                "saved_restart": "Configuration saved. Frigate will restart automatically to apply changes.",
+                "title_status": "Frigate on Umbrel", "title_config": "Frigate configuration",
+                "field_START_HEIGHT_label": "Start height", "field_START_HEIGHT_help": "Optional block height where Frigate starts building its Silent Payments index. Leave empty to use Frigate's official default: 709632 on mainnet (Taproot activation), 0 on test networks. Changing this value requires deleting the DuckDB index and rebuilding from scratch because Frigate stores the index in db/frigate.duckdb and the documented index can be rebuilt from Bitcoin Core.",
+                "field_CACHE_SIZE_label": "Cache size", "field_CACHE_SIZE_help": "scriptPubKey cache size. Default 10M uses roughly 4 GB RAM according to Frigate docs. Reduce on low-memory systems.",
+                "field_COMPUTE_BACKEND_label": "Compute backend", "field_COMPUTE_BACKEND_help": "AUTO uses GPU if available and CPU otherwise. CPU forces CPU scanning. GPU forces GPU scanning.",
+                "field_DB_THREADS_label": "DB threads", "field_DB_THREADS_help": "Optional DuckDB thread limit. Useful to reduce CPU load when computeBackend is CPU. Leave empty for Frigate default.",
+                "field_MEMORY_LIMIT_label": "Memory limit", "field_MEMORY_LIMIT_help": "Optional DuckDB memory cap, e.g. 4GB, 8GB, 1024MB. Leave empty for Frigate default.",
+                "field_BATCH_SIZE_label": "Batch size", "field_BATCH_SIZE_help": "Optional rows per GPU dispatch. Reduce if scanning hangs or is unstable on older GPUs.",
+                "field_MAX_LABELS_label": "Max labels", "field_MAX_LABELS_help": "Maximum Silent Payments labels accepted per subscription.",
+                "field_MAX_SUBSCRIPTIONS_label": "Max subscriptions", "field_MAX_SUBSCRIPTIONS_help": "Maximum Silent Payments subscriptions per connection.",
+                "field_RPC_REQUEST_TIMEOUT_SECONDS_label": "RPC request timeout", "field_RPC_REQUEST_TIMEOUT_SECONDS_help": "Per-RPC read timeout against Bitcoin Core in seconds. Increase on slow nodes.",
+                "field_RPC_BATCH_SIZE_label": "RPC batch size", "field_RPC_BATCH_SIZE_help": "Maximum sub-requests per JSON-RPC array batch used during mempool indexing.",
+            },
+            "es": {
+                "status": "Estado", "configuration": "Configuración", "copied": "Copiado", "copy": "Copiar",
+                "confirm_start_height": "Cambiar la altura inicial cambia el rango del índice. Frigate borrará db/, reconstruirá el índice desde cero y se reiniciará automáticamente. ¿Continuar?",
+                "confirm_restart": "¿Guardar la configuración y reiniciar Frigate automáticamente ahora?",
+                "no_log": "Aún no hay log de Frigate. Puede que el servicio todavía esté instalando dependencias o descargando Frigate.",
+                "status_starting": "Iniciando", "detail_starting": "Esperando a que Frigate escriba sus primeras líneas de log.",
+                "status_attention": "Requiere atención", "detail_attention": "Frigate ha informado de un error. Revisa el log de abajo.",
+                "status_ready": "Listo", "detail_ready": "Frigate está indexado y aceptando conexiones Electrum.",
+                "status_indexing": "Indexando / sincronizando", "detail_indexing": "Frigate está construyendo o actualizando su índice de Silent Payments. Estará listo cuando el log indique Electrum server listening.",
+                "default_suffix": "valor por defecto de Frigate", "calculating": "Calculando...",
+                "onion_generating": "Generando dirección onion...", "onion_ready": "Usa este host desde clientes Electrum con Tor activado.", "onion_waiting": "Tor todavía está creando el hostname del servicio oculto.",
+                "restart_requested": "Reinicio solicitado. Frigate recargará la configuración en breve.",
+                "indexing_progress": "Progreso de indexación", "progress": "Progreso", "start_block": "Bloque inicial", "indexed_block": "Bloque indexado", "chain_tip": "Punta de cadena",
+                "clearnet": "Clearnet / LAN", "host": "Host", "port": "Puerto", "clearnet_help": "Usa esto desde wallets en tu red local.", "tor_service": "Servicio oculto Tor",
+                "bitcoin_network": "Red Bitcoin", "configured_start_block": "Bloque inicial configurado", "cache_size": "Tamaño de caché", "compute_backend": "Backend de cálculo", "log_file": "Archivo de log", "updated": "Actualizado", "latest_logs": "Últimas líneas del log de Frigate:",
+                "config_notice": "Los cambios se escriben en /data/frigate/settings.env. Al guardar se pedirá confirmación y Frigate se reiniciará automáticamente.", "save_configuration": "Guardar configuración",
+                "important": "Importante:", "start_height_warning": "cambiar la altura inicial borra el índice local db/ en el siguiente reinicio de Frigate para poder reconstruirlo correctamente desde la nueva altura. Vacío usa el valor por defecto de Frigate.",
+                "saved_start_height": "Configuración guardada. La altura inicial cambió, así que Frigate borrará db/ y reconstruirá el índice durante el reinicio automático.",
+                "saved_restart": "Configuración guardada. Frigate se reiniciará automáticamente para aplicar los cambios.",
+                "title_status": "Frigate en Umbrel", "title_config": "Configuración de Frigate",
+                "field_START_HEIGHT_label": "Altura inicial", "field_START_HEIGHT_help": "Altura de bloque opcional donde Frigate empieza a construir su índice de Silent Payments. Déjalo vacío para usar el valor oficial por defecto de Frigate: 709632 en mainnet (activación de Taproot), 0 en redes de prueba. Cambiar este valor requiere borrar el índice DuckDB y reconstruirlo desde cero porque Frigate guarda el índice en db/frigate.duckdb y el índice documentado puede reconstruirse desde Bitcoin Core.",
+                "field_CACHE_SIZE_label": "Tamaño de caché", "field_CACHE_SIZE_help": "Tamaño de caché scriptPubKey. El valor por defecto 10M usa aproximadamente 4 GB de RAM según la documentación de Frigate. Redúcelo en sistemas con poca memoria.",
+                "field_COMPUTE_BACKEND_label": "Backend de cálculo", "field_COMPUTE_BACKEND_help": "AUTO usa GPU si está disponible y CPU en caso contrario. CPU fuerza escaneo por CPU. GPU fuerza escaneo por GPU.",
+                "field_DB_THREADS_label": "Hilos de DB", "field_DB_THREADS_help": "Límite opcional de hilos DuckDB. Útil para reducir carga de CPU cuando computeBackend es CPU. Déjalo vacío para usar el valor por defecto de Frigate.",
+                "field_MEMORY_LIMIT_label": "Límite de memoria", "field_MEMORY_LIMIT_help": "Límite opcional de memoria DuckDB, por ejemplo 4GB, 8GB, 1024MB. Déjalo vacío para usar el valor por defecto de Frigate.",
+                "field_BATCH_SIZE_label": "Tamaño de lote", "field_BATCH_SIZE_help": "Filas opcionales por envío a GPU. Redúcelo si el escaneo se queda colgado o es inestable en GPUs antiguas.",
+                "field_MAX_LABELS_label": "Máximo de etiquetas", "field_MAX_LABELS_help": "Máximo de etiquetas Silent Payments aceptadas por suscripción.",
+                "field_MAX_SUBSCRIPTIONS_label": "Máximo de suscripciones", "field_MAX_SUBSCRIPTIONS_help": "Máximo de suscripciones Silent Payments por conexión.",
+                "field_RPC_REQUEST_TIMEOUT_SECONDS_label": "Timeout RPC", "field_RPC_REQUEST_TIMEOUT_SECONDS_help": "Timeout de lectura por petición RPC contra Bitcoin Core, en segundos. Auméntalo en nodos lentos.",
+                "field_RPC_BATCH_SIZE_label": "Tamaño de lote RPC", "field_RPC_BATCH_SIZE_help": "Máximo de sub-peticiones por lote JSON-RPC usado durante la indexación de mempool.",
+            },
+        }
+
+        def select_language(header):
+            for part in (header or "").split(","):
+                code = part.split(";", 1)[0].strip().lower()
+                if code.startswith("es"):
+                    return "es"
+                if code.startswith("en"):
+                    return "en"
+            return "en"
+
+        def tr(lang, key):
+            return TEXT.get(lang, TEXT["en"]).get(key, TEXT["en"].get(key, key))
 
         def ensure_settings():
             DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -80,31 +146,31 @@ services:
         def log_path(network):
             return DATA_DIR / "frigate.log" if network == "mainnet" else DATA_DIR / network / "frigate.log"
 
-        def latest_lines(path, limit=35):
+        def latest_lines(path, lang, limit=35):
             if not path.exists():
-                return "No Frigate log found yet. The service may still be installing dependencies or downloading Frigate."
+                return tr(lang, "no_log")
             lines = path.read_text(errors="replace").splitlines()
             return "\n".join(lines[-limit:])
 
         def status_from_log(path):
             if not path.exists():
-                return "Starting", "Waiting for Frigate to write its first log entries."
+                return "status_starting", "detail_starting"
             lines = path.read_text(errors="replace").splitlines()
             recent = "\n".join(lines[-120:])
             if "ERROR" in recent.upper():
-                return "Needs attention", "Frigate reported an error. Check the log below."
+                return "status_attention", "detail_attention"
             if any("Electrum server listening" in line for line in lines):
-                return "Ready", "Frigate is indexed and accepting Electrum connections."
-            return "Indexing / syncing", "Frigate is building or updating its Silent Payments index. It will be ready when the log says Electrum server listening."
+                return "status_ready", "detail_ready"
+            return "status_indexing", "detail_indexing"
 
-        def progress_info(path, network, configured_start_height, is_ready):
+        def progress_info(path, network, configured_start_height, is_ready, lang):
             default_start = 709632 if network == "mainnet" else 0
             start_height = int(configured_start_height) if configured_start_height.isdigit() else default_start
-            start_label = f"{start_height}" if configured_start_height else f"{start_height} (Frigate default)"
+            start_label = f"{start_height}" if configured_start_height else f"{start_height} ({tr(lang, 'default_suffix')})"
             if is_ready:
-                return "100.00%", "100", start_label, "Ready", "Ready"
+                return "100.00%", "100", start_label, tr(lang, "status_ready"), tr(lang, "status_ready")
             if not path.exists():
-                return "Calculando...", None, start_label, "Calculando...", "Calculando..."
+                return tr(lang, "calculating"), None, start_label, tr(lang, "calculating"), tr(lang, "calculating")
             indexed_height = None
             tip_height = None
             for line in path.read_text(errors="replace").splitlines():
@@ -115,14 +181,14 @@ services:
                 if match:
                     indexed_height = int(match.group(1))
             if indexed_height is None or tip_height is None or tip_height <= start_height:
-                return "Calculando...", None, start_label, "Calculando...", str(tip_height) if tip_height is not None else "Calculando..."
+                return tr(lang, "calculating"), None, start_label, tr(lang, "calculating"), str(tip_height) if tip_height is not None else tr(lang, "calculating")
             percent = max(0.0, min(100.0, ((indexed_height - start_height) / (tip_height - start_height)) * 100.0))
             return f"{percent:.2f}%", f"{percent:.2f}", start_label, str(indexed_height), str(tip_height)
 
-        def page(title, body, refresh=True):
+        def page(title, body, lang, refresh=True):
             refresh_tag = '<meta http-equiv="refresh" content="10">' if refresh else ""
             return f'''<!doctype html>
-        <html lang="en">
+        <html lang="{escape(lang)}">
         <head>
           <meta charset="utf-8">
           {refresh_tag}
@@ -162,7 +228,7 @@ services:
         </style>
         <script>
           function copyValue(value, button) {{
-            function done() {{ const old = button.textContent; button.textContent = 'Copied'; setTimeout(() => button.textContent = old, 1200); }}
+            function done() {{ const old = button.textContent; button.textContent = '{escape(tr(lang, "copied"))}'; setTimeout(() => button.textContent = old, 1200); }}
             if (navigator.clipboard && window.isSecureContext) {{ navigator.clipboard.writeText(value).then(done); return; }}
             const area = document.createElement('textarea'); area.value = value; document.body.appendChild(area); area.select(); document.execCommand('copy'); document.body.removeChild(area); done();
           }}
@@ -170,78 +236,87 @@ services:
             const oldHeight = form.dataset.currentStartHeight || '';
             const newHeight = (form.elements['START_HEIGHT'].value || '').trim();
             if (oldHeight !== newHeight) {{
-              return confirm('Changing Start height changes the index range. Frigate will delete db/ and rebuild the index from scratch, then restart automatically. Continue?');
+              return confirm('{escape(tr(lang, "confirm_start_height"))}');
             }}
-            return confirm('Save configuration and restart Frigate automatically now?');
+            return confirm('{escape(tr(lang, "confirm_restart"))}');
           }}
         </script>
         </head>
         <body><main>{body}</main></body></html>'''
 
-        def status_body(message=""):
+        def status_body(lang, message=""):
             settings = read_settings()
             network = os.environ.get("APP_BITCOIN_NETWORK", "mainnet")
             lpath = log_path(network)
-            status, detail = status_from_log(lpath)
-            is_ready = status == "Ready"
+            status_key, detail_key = status_from_log(lpath)
+            status = tr(lang, status_key)
+            detail = tr(lang, detail_key)
+            is_ready = status_key == "status_ready"
             port = os.environ.get("APP_FRIGATE_ELECTRUM_PORT", "50005")
             clearnet_host = os.environ.get("DEVICE_DOMAIN_NAME", "umbrel.local")
-            onion_host = TOR_HOSTNAME_FILE.read_text().strip() if TOR_HOSTNAME_FILE.exists() else "Generating onion address..."
-            onion_detail = "Use this host from Tor-enabled Electrum clients." if onion_host.endswith(".onion") else "Tor is still creating the hidden service hostname."
-            restart_msg = '<div class="card warning"><p>Restart requested. Frigate will reload configuration shortly.</p></div>' if RESTART_FILE.exists() else ""
+            onion_host = TOR_HOSTNAME_FILE.read_text().strip() if TOR_HOSTNAME_FILE.exists() else tr(lang, "onion_generating")
+            onion_detail = tr(lang, "onion_ready") if onion_host.endswith(".onion") else tr(lang, "onion_waiting")
+            restart_msg = f'<div class="card warning"><p>{escape(tr(lang, "restart_requested"))}</p></div>' if RESTART_FILE.exists() else ""
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else restart_msg
-            progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(lpath, network, settings["START_HEIGHT"], is_ready)
+            progress_label, progress_value, start_label, indexed_block, tip_block = progress_info(lpath, network, settings["START_HEIGHT"], is_ready, lang)
             progress_bar = f'<div class="progress"><div class="progress-fill" style="width: {escape(progress_value or "35")}%"></div></div>' if progress_value else '<div class="progress progress-indeterminate"><div class="progress-fill"></div></div>'
             return f'''
             <h1>Frigate</h1>
-            <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
+            <nav><a href="/">{escape(tr(lang, "status"))}</a><a href="/config">{escape(tr(lang, "configuration"))}</a></nav>
             {msg}
             <div class="status"><span class="dot"></span>{escape(status)}</div>
             <p>{escape(detail)}</p>
-            <div class="card"><h2>Indexing progress</h2>{progress_bar}<dl><dt>Progress</dt><dd><code>{escape(progress_label)}</code></dd><dt>Start block</dt><dd><code>{escape(start_label)}</code></dd><dt>Indexed block</dt><dd><code>{escape(indexed_block)}</code></dd><dt>Chain tip</dt><dd><code>{escape(tip_block)}</code></dd></dl></div>
+            <div class="card"><h2>{escape(tr(lang, "indexing_progress"))}</h2>{progress_bar}<dl><dt>{escape(tr(lang, "progress"))}</dt><dd><code>{escape(progress_label)}</code></dd><dt>{escape(tr(lang, "start_block"))}</dt><dd><code>{escape(start_label)}</code></dd><dt>{escape(tr(lang, "indexed_block"))}</dt><dd><code>{escape(indexed_block)}</code></dd><dt>{escape(tr(lang, "chain_tip"))}</dt><dd><code>{escape(tip_block)}</code></dd></dl></div>
             <div class="connections">
-              <div class="connection"><h2>Clearnet / LAN</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>Use this from wallets on your local network.</p></div>
-              <div class="connection"><h2>Tor hidden service</h2><dl><dt>Host</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">Copy</button></div></dd><dt>Port</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">Copy</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
+              <div class="connection"><h2>{escape(tr(lang, "clearnet"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(clearnet_host)}</code><button class="copy-button" onclick="copyValue('{escape(clearnet_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(tr(lang, "clearnet_help"))}</p></div>
+              <div class="connection"><h2>{escape(tr(lang, "tor_service"))}</h2><dl><dt>{escape(tr(lang, "host"))}</dt><dd><div class="copy-row"><code class="endpoint">{escape(onion_host)}</code><button class="copy-button" onclick="copyValue('{escape(onion_host)}', this)">{escape(tr(lang, "copy"))}</button></div></dd><dt>{escape(tr(lang, "port"))}</dt><dd><div class="copy-row"><code>{escape(port)}</code><button class="copy-button" onclick="copyValue('{escape(port)}', this)">{escape(tr(lang, "copy"))}</button></div></dd></dl><p>{escape(onion_detail)}</p></div>
             </div>
-            <div class="card"><dl><dt>Bitcoin network</dt><dd><code>{escape(network)}</code></dd><dt>Configured start block</dt><dd><code>{escape(settings["START_HEIGHT"] or "Frigate default")}</code></dd><dt>Cache size</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>Compute backend</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>Log file</dt><dd><code>{escape(str(lpath))}</code></dd><dt>Updated</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
-            <div class="card"><p>Latest Frigate log lines:</p><pre>{escape(latest_lines(lpath))}</pre></div>
+            <div class="card"><dl><dt>{escape(tr(lang, "bitcoin_network"))}</dt><dd><code>{escape(network)}</code></dd><dt>{escape(tr(lang, "configured_start_block"))}</dt><dd><code>{escape(settings["START_HEIGHT"] or tr(lang, "default_suffix"))}</code></dd><dt>{escape(tr(lang, "cache_size"))}</dt><dd><code>{escape(settings["CACHE_SIZE"])}</code></dd><dt>{escape(tr(lang, "compute_backend"))}</dt><dd><code>{escape(settings["COMPUTE_BACKEND"])}</code></dd><dt>{escape(tr(lang, "log_file"))}</dt><dd><code>{escape(str(lpath))}</code></dd><dt>{escape(tr(lang, "updated"))}</dt><dd>{escape(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))}</dd></dl></div>
+            <div class="card"><p>{escape(tr(lang, "latest_logs"))}</p><pre>{escape(latest_lines(lpath, lang))}</pre></div>
             '''
 
-        def config_body(message=""):
+        def config_body(lang, message=""):
             settings = read_settings()
             msg = f'<div class="card warning"><p>{escape(message)}</p></div>' if message else ""
             fields = []
-            for key, label, help_text in FIELDS:
+            for key in FIELDS:
+                label = tr(lang, f"field_{key}_label")
+                help_text = tr(lang, f"field_{key}_help")
                 value = settings.get(key, DEFAULTS[key])
                 if key == "COMPUTE_BACKEND":
                     control = '<select name="COMPUTE_BACKEND">' + ''.join(f'<option value="{v}" {"selected" if value == v else ""}>{v}</option>' for v in ["AUTO", "GPU", "CPU"]) + '</select>'
                 else:
-                    placeholder = 'Frigate default' if key == 'START_HEIGHT' else DEFAULTS[key]
+                    placeholder = tr(lang, "default_suffix") if key == 'START_HEIGHT' else DEFAULTS[key]
                     control = f'<input name="{key}" value="{escape(value)}" placeholder="{escape(placeholder)}">'
-                warning = '<p class="help"><strong>Important:</strong> changing start height deletes the local db/ index on next Frigate restart so it can be rebuilt correctly from the new height. Empty uses Frigate default.</p>' if key == "START_HEIGHT" else ""
+                warning = f'<p class="help"><strong>{escape(tr(lang, "important"))}</strong> {escape(tr(lang, "start_height_warning"))}</p>' if key == "START_HEIGHT" else ""
                 fields.append(f'<div class="field"><div><h2>{escape(label)}</h2><p class="help"><code>{escape(key)}</code></p></div><div>{control}<p class="help">{escape(help_text)}</p>{warning}</div></div>')
             return f'''
-            <h1>Configuration</h1>
-            <nav><a href="/">Status</a><a href="/config">Configuration</a></nav>
+            <h1>{escape(tr(lang, "configuration"))}</h1>
+            <nav><a href="/">{escape(tr(lang, "status"))}</a><a href="/config">{escape(tr(lang, "configuration"))}</a></nav>
             {msg}
-            <div class="card warning"><p>Changes are written to <code>/data/frigate/settings.env</code>. Saving asks for confirmation and restarts Frigate automatically.</p></div>
+            <div class="card warning"><p>{escape(tr(lang, "config_notice"))}</p></div>
             <form method="post" action="/config" class="card" data-current-start-height="{escape(settings['START_HEIGHT'])}" onsubmit="return confirmConfigSave(this)">
               {''.join(fields)}
-              <p><button type="submit">Save configuration</button></p>
+              <p><button type="submit">{escape(tr(lang, "save_configuration"))}</button></p>
             </form>
             '''
 
         class Handler(BaseHTTPRequestHandler):
+            def language(self):
+                return select_language(self.headers.get("Accept-Language", ""))
+
             def do_GET(self):
+                lang = self.language()
                 if self.path.startswith("/config"):
-                    self.respond(page("Frigate configuration", config_body(), refresh=False))
+                    self.respond(page(tr(lang, "title_config"), config_body(lang), lang, refresh=False))
                 else:
-                    self.respond(page("Frigate on Umbrel", status_body(), refresh=True))
+                    self.respond(page(tr(lang, "title_status"), status_body(lang), lang, refresh=True))
 
             def do_POST(self):
                 if not self.path.startswith("/config"):
                     self.send_error(404)
                     return
+                lang = self.language()
                 length = int(self.headers.get("content-length", "0"))
                 form = parse_qs(self.rfile.read(length).decode())
                 old = read_settings()
@@ -253,10 +328,10 @@ services:
                 write_settings(new)
                 RESTART_FILE.write_text(str(int(time.time())) + "\n")
                 if new["START_HEIGHT"] != old["START_HEIGHT"]:
-                    message = "Configuration saved. Start height changed, so Frigate will delete db/ and rebuild the index during the automatic restart."
+                    message = tr(lang, "saved_start_height")
                 else:
-                    message = "Configuration saved. Frigate will restart automatically to apply changes."
-                self.respond(page("Frigate configuration", config_body(message), refresh=False))
+                    message = tr(lang, "saved_restart")
+                self.respond(page(tr(lang, "title_config"), config_body(lang, message), lang, refresh=False))
 
             def respond(self, html):
                 data = html.encode()
